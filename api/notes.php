@@ -34,6 +34,15 @@ function find_note($conn, $noteId, $userId)
     return mysqli_fetch_assoc($result);
 }
 
+// Write an audit log entry.
+function write_audit($conn, $userId, $action, $entityType, $entityId, $details = '')
+{
+    $stmt = mysqli_prepare($conn,
+        'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)');
+    mysqli_stmt_bind_param($stmt, 'issss', $userId, $action, $entityType, $entityId, $details);
+    mysqli_stmt_execute($stmt);
+}
+
 // ---------- Check the request ----------
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -75,7 +84,9 @@ try {
             $userId, $title, $body, $remark);
         mysqli_stmt_execute($stmt);
 
-        reply(['ok' => true, 'id' => 'NOTE-' . mysqli_insert_id($conn)]);
+        $newId = 'NOTE-' . mysqli_insert_id($conn);
+        write_audit($conn, $userId, 'CREATE', 'note', $newId, $title);
+        reply(['ok' => true, 'id' => $newId]);
     }
 
     // ---------- UPDATE a note ----------
@@ -102,6 +113,8 @@ try {
             $title, $body, $remark, $noteId, $userId);
         mysqli_stmt_execute($stmt);
 
+        $entityId = 'NOTE-' . $noteId;
+        write_audit($conn, $userId, 'UPDATE', 'note', $entityId, $title);
         reply(['ok' => true]);
     }
 
@@ -116,6 +129,8 @@ try {
         mysqli_stmt_bind_param($stmt, 'ii', $noteId, $userId);
         mysqli_stmt_execute($stmt);
 
+        $entityId = 'NOTE-' . $noteId;
+        write_audit($conn, $userId, 'DELETE', 'note', $entityId, 'Note deleted');
         reply(['ok' => true]);
     }
 

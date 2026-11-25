@@ -41,6 +41,15 @@ function clean_date($value)
     return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : null;
 }
 
+// Write an audit log entry.
+function write_audit($conn, $userId, $action, $entityType, $entityId, $details = '')
+{
+    $stmt = mysqli_prepare($conn,
+        'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)');
+    mysqli_stmt_bind_param($stmt, 'issss', $userId, $action, $entityType, $entityId, $details);
+    mysqli_stmt_execute($stmt);
+}
+
 // ---------- Check the request ----------
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -89,7 +98,9 @@ try {
             $userId, $title, $subject, $description, $dueDate, $priority, $minutes, $tags, $reminder);
         mysqli_stmt_execute($stmt);
 
-        reply(['ok' => true, 'id' => 'TASK-' . mysqli_insert_id($conn)]);
+        $newId = 'TASK-' . mysqli_insert_id($conn);
+        write_audit($conn, $userId, 'CREATE', 'task', $newId, $title);
+        reply(['ok' => true, 'id' => $newId]);
     }
 
     // ---------- UPDATE the details of a task ----------
@@ -117,6 +128,8 @@ try {
             $title, $subject, $description, $dueDate, $priority, $taskId, $userId);
         mysqli_stmt_execute($stmt);
 
+        $entityId = 'TASK-' . $taskId;
+        write_audit($conn, $userId, 'UPDATE', 'task', $entityId, "Title: $title, Subject: $subject");
         reply(['ok' => true]);
     }
 
@@ -145,6 +158,11 @@ try {
             'INSERT INTO task_history (task_id, previous_status, next_status, action_label) VALUES (?, ?, ?, ?)');
         mysqli_stmt_bind_param($stmt, 'isss', $taskId, $previous, $next, $label);
         mysqli_stmt_execute($stmt);
+
+        // Audit log
+        $entityId = 'TASK-' . $taskId;
+        $auditAction = ($next === 'Archived') ? 'ARCHIVE' : 'STATUS_CHANGE';
+        write_audit($conn, $userId, $auditAction, 'task', $entityId, "$previous → $next ($label)");
 
         reply(['ok' => true]);
     }

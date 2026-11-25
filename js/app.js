@@ -729,7 +729,7 @@ function isValidPayload(payload) {
     !Array.isArray(payload.schedules) ||
     !Array.isArray(payload.notes) ||
     !Array.isArray(payload.expenses) ||
-    !Array.isArray(payload.auditLog)
+    (payload.auditLog !== undefined && !Array.isArray(payload.auditLog))
   ) {
     return false;
   }
@@ -814,7 +814,9 @@ function applyPayload(payload) {
   state.schedules = payload.schedules;
   state.notes = payload.notes;
   state.expenses = payload.expenses;
-  state.auditLog = payload.auditLog.slice(0, 200);
+  if (Array.isArray(payload.auditLog)) {
+    state.auditLog = payload.auditLog.slice(0, 200);
+  }
   state.filters = { ...payload.preferences.filters };
   state.sort = { ...payload.preferences.sort };
   state.pageSize = payload.preferences.pageSize;
@@ -844,7 +846,7 @@ function createStoragePayload() {
       pageSize: state.pageSize,
     },
     activeRole: session.role,
-    auditLog: state.auditLog,
+    // auditLog is now server-side (see window.STUDYHUB_AUDIT)
   };
 }
 
@@ -932,6 +934,12 @@ if (Array.isArray(window.STUDYHUB_SCHEDULES)) {
    They replace the sample notes and the notes saved in localStorage. */
 if (Array.isArray(window.STUDYHUB_NOTES)) {
   state.notes = window.STUDYHUB_NOTES;
+}
+
+/* Audit log from the database. PHP writes window.STUDYHUB_AUDIT in index.php.
+   Replaces the localStorage-only audit trail. */
+if (Array.isArray(window.STUDYHUB_AUDIT)) {
+  state.auditLog = window.STUDYHUB_AUDIT;
 }
 
 function normalize(value) {

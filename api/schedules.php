@@ -48,6 +48,15 @@ function clean_day($value)
     return in_array($value, $valid, true) ? $value : null;
 }
 
+// Write an audit log entry.
+function write_audit($conn, $userId, $action, $entityType, $entityId, $details = '')
+{
+    $stmt = mysqli_prepare($conn,
+        'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)');
+    mysqli_stmt_bind_param($stmt, 'issss', $userId, $action, $entityType, $entityId, $details);
+    mysqli_stmt_execute($stmt);
+}
+
 // ---------- Check the request ----------
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -95,7 +104,9 @@ try {
             $userId, $day, $startTime, $endTime, $className, $courseCode, $instructor);
         mysqli_stmt_execute($stmt);
 
-        reply(['ok' => true, 'id' => 'SCH-' . mysqli_insert_id($conn)]);
+        $newId = 'SCH-' . mysqli_insert_id($conn);
+        write_audit($conn, $userId, 'CREATE', 'schedule', $newId, "$className ($day $startTime-$endTime)");
+        reply(['ok' => true, 'id' => $newId]);
     }
 
     // ---------- UPDATE a schedule ----------
@@ -128,6 +139,8 @@ try {
             $day, $startTime, $endTime, $className, $courseCode, $instructor, $scheduleId, $userId);
         mysqli_stmt_execute($stmt);
 
+        $entityId = 'SCH-' . $scheduleId;
+        write_audit($conn, $userId, 'UPDATE', 'schedule', $entityId, "$className ($day $startTime-$endTime)");
         reply(['ok' => true]);
     }
 
@@ -142,6 +155,8 @@ try {
         mysqli_stmt_bind_param($stmt, 'ii', $scheduleId, $userId);
         mysqli_stmt_execute($stmt);
 
+        $entityId = 'SCH-' . $scheduleId;
+        write_audit($conn, $userId, 'DELETE', 'schedule', $entityId, 'Schedule deleted');
         reply(['ok' => true]);
     }
 
