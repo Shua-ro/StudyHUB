@@ -103,8 +103,7 @@ const TRANSITION_CONDITIONS = {
   // For archiving a Done task — only needs title/subject (dueDate optional)
   isDone: (task) =>
     Boolean(
-      String(task.title ?? "").trim() &&
-      String(task.subject ?? "").trim(),
+      String(task.title ?? "").trim() && String(task.subject ?? "").trim(),
     ),
 };
 
@@ -705,25 +704,27 @@ function isValidPayload(payload) {
     typeof payload.savedAt !== "string" ||
     Number.isNaN(Date.parse(payload.savedAt)) ||
     !["admin", "student", "teacher"].includes(payload.activeRole) ||
-    !payload.preferences ||
-    typeof payload.preferences !== "object" ||
-    !["dark", "light", "system"].includes(payload.preferences.theme) ||
-    !payload.preferences.filters ||
-    !["ALL", ...WORKFLOW_PATH].includes(payload.preferences.filters.status) ||
-    !["ALL", "High", "Medium", "Low"].includes(
-      payload.preferences.filters.priority,
-    ) ||
-    !payload.preferences.sort ||
-    ![
-      "title",
-      "subject",
-      "dueDate",
-      "createdAt",
-      "priority",
-      "status",
-    ].includes(payload.preferences.sort.key) ||
-    !["asc", "desc"].includes(payload.preferences.sort.direction) ||
-    ![5, 10, 15].includes(payload.preferences.pageSize) ||
+    (payload.preferences !== undefined &&
+      (typeof payload.preferences !== "object" ||
+        !["dark", "light", "system"].includes(payload.preferences.theme) ||
+        !payload.preferences.filters ||
+        !["ALL", ...WORKFLOW_PATH].includes(
+          payload.preferences.filters.status,
+        ) ||
+        !["ALL", "High", "Medium", "Low"].includes(
+          payload.preferences.filters.priority,
+        ) ||
+        !payload.preferences.sort ||
+        ![
+          "title",
+          "subject",
+          "dueDate",
+          "createdAt",
+          "priority",
+          "status",
+        ].includes(payload.preferences.sort.key) ||
+        !["asc", "desc"].includes(payload.preferences.sort.direction) ||
+        ![5, 10, 15].includes(payload.preferences.pageSize))) ||
     !Array.isArray(payload.records) ||
     !Array.isArray(payload.archivedRecords) ||
     !Array.isArray(payload.schedules) ||
@@ -791,16 +792,17 @@ function isValidPayload(payload) {
         item.amount <= 0,
     ) ||
     !hasUniqueIds(payload.expenses) ||
-    payload.auditLog.some(
-      (entry) =>
-        !entry ||
-        typeof entry.timestamp !== "string" ||
-        Number.isNaN(Date.parse(entry.timestamp)) ||
-        typeof entry.actor !== "string" ||
-        typeof entry.action !== "string" ||
-        typeof entry.targetId !== "string" ||
-        typeof entry.details !== "string",
-    )
+    (Array.isArray(payload.auditLog) &&
+      payload.auditLog.some(
+        (entry) =>
+          !entry ||
+          typeof entry.timestamp !== "string" ||
+          Number.isNaN(Date.parse(entry.timestamp)) ||
+          typeof entry.actor !== "string" ||
+          typeof entry.action !== "string" ||
+          typeof entry.targetId !== "string" ||
+          typeof entry.details !== "string",
+      ))
   ) {
     return false;
   }
@@ -817,10 +819,12 @@ function applyPayload(payload) {
   if (Array.isArray(payload.auditLog)) {
     state.auditLog = payload.auditLog.slice(0, 200);
   }
-  state.filters = { ...payload.preferences.filters };
-  state.sort = { ...payload.preferences.sort };
-  state.pageSize = payload.preferences.pageSize;
-  state.preferences = { theme: payload.preferences.theme };
+  if (payload.preferences && typeof payload.preferences === 'object') {
+    state.filters = { ...payload.preferences.filters };
+    state.sort = { ...payload.preferences.sort };
+    state.pageSize = payload.preferences.pageSize;
+    state.preferences.theme = payload.preferences.theme;
+  }
   state.query = "";
   state.page = 1;
   state.selectedRecord = null;
@@ -940,6 +944,24 @@ if (Array.isArray(window.STUDYHUB_NOTES)) {
    Replaces the localStorage-only audit trail. */
 if (Array.isArray(window.STUDYHUB_AUDIT)) {
   state.auditLog = window.STUDYHUB_AUDIT;
+}
+
+/* User preferences from the database. PHP writes window.STUDYHUB_PREFERENCES in index.php.
+   Replaces localStorage for theme, filters, sort, page size. */
+if (
+  window.STUDYHUB_PREFERENCES &&
+  typeof window.STUDYHUB_PREFERENCES === "object"
+) {
+  state.preferences.theme = window.STUDYHUB_PREFERENCES.theme ?? "system";
+  state.filters = window.STUDYHUB_PREFERENCES.filters ?? {
+    status: "ALL",
+    priority: "ALL",
+  };
+  state.sort = window.STUDYHUB_PREFERENCES.sort ?? {
+    key: "dueDate",
+    direction: "asc",
+  };
+  state.pageSize = window.STUDYHUB_PREFERENCES.pageSize ?? 10;
 }
 
 function normalize(value) {
@@ -2119,6 +2141,25 @@ async function saveNoteToServer(payload) {
     return data;
   } catch (error) {
     showMessage(`Could not save to the database: ${error.message}`);
+    return null;
+  }
+}
+
+/* Send a preferences change to the database (api/preferences.php).
+   Returns the answer from PHP, or null if the save failed. */
+async function savePreferencesToServer(payload) {
+  try {
+    const response = await fetch("api/preferences.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.message || "Save failed.");
+    return data;
+  } catch (error) {
+    showMessage(`Could not save preferences: ${error.message}`);
     return null;
   }
 }
