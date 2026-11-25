@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StudyHub – Log in</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="css/auth.css" />
+  </head>
+  <body>
+    <main class="auth-layout">
+      <section class="auth-content">
+        <a class="brand" href="login.html"><img class="brand-logo" src="assets/logo.svg" alt="" />StudyHub</a>
+
+        <div class="auth-form-wrap">
+          <div class="auth-heading">
+            <h1>Welcome back</h1>
+            <p>Log in to pick up where you left off.</p>
+          </div>
+
+          <nav class="account-tabs" aria-label="Account">
+            <a href="login.html" aria-current="page">Log in</a>
+            <a href="signup.html">Sign up</a>
+          </nav>
+
+          <p id="auth-message" class="auth-message" role="alert" hidden></p>
+
+          <form id="auth-form" class="auth-form" data-mode="login" novalidate>
+            <label class="field">Username
+              <input id="username" name="username" type="text" autocomplete="username" maxlength="190" required />
+            </label>
+
+            <label class="field">Password
+              <div class="password-field">
+                <input id="password" name="password" type="password" autocomplete="current-password" required />
+                <button class="password-toggle" type="button" data-password-toggle="#password" aria-label="Show password">Show</button>
+              </div>
+            </label>
+
+            <fieldset class="role-field">
+              <legend>I am a</legend>
+              <div class="role-options">
+                <label class="role-option"><input type="radio" name="role" value="student" checked /><span>Student</span></label>
+                <label class="role-option"><input type="radio" name="role" value="teacher" /><span>Teacher</span></label>
+              </div>
+            </fieldset>
+
+            <button class="button button-primary" type="submit">Log in</button>
+          </form>
+
+          <p class="auth-footer">No account yet? <a href="signup.html">Sign up</a></p>
+        </div>
+
+        <p class="auth-footer">&copy; StudyHub</p>
+      </section>
+
+      <aside class="visual-panel" aria-hidden="true">
+        <h2 class="visual-headline">Study smarter,<br /><span>not harder.</span></h2>
+        <p class="visual-caption">Tasks, schedules, notes and a focus timer in one place.</p>
+      </aside>
+    </main>
+
+    <script src="js/auth.js" defer></script>
+    <script src="js/auth-forms.js" defer></script>
+  </body>
+</html>

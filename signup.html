@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StudyHub – Sign up</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="css/auth.css" />
+  </head>
+  <body>
+    <main class="auth-layout">
+      <section class="auth-content">
+        <a class="brand" href="login.html"><img class="brand-logo" src="assets/logo.svg" alt="" />StudyHub</a>
+
+        <div class="auth-form-wrap">
+          <div class="auth-heading">
+            <h1>Create your account</h1>
+            <p>Sign up to start organizing your studies.</p>
+          </div>
+
+          <nav class="account-tabs" aria-label="Account">
+            <a href="login.html">Log in</a>
+            <a href="signup.html" aria-current="page">Sign up</a>
+          </nav>
+
+          <p id="auth-message" class="auth-message" role="alert" hidden></p>
+
+          <form id="auth-form" class="auth-form" data-mode="signup" novalidate>
+            <label class="field">Full name
+              <input id="name" name="name" type="text" autocomplete="name" maxlength="100" required />
+            </label>
+            <label class="field">Email (used as username)
+              <input id="username" name="username" type="email" autocomplete="username" maxlength="190" required />
+            </label>
+
+            <label class="field">Password
+              <div class="password-field">
+                <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required />
+                <button class="password-toggle" type="button" data-password-toggle="#password" aria-label="Show password">Show</button>
+              </div>
+            </label>
+            <label class="field">Confirm password
+              <div class="password-field">
+                <input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required />
+              </div>
+            </label>
+
+            <fieldset class="role-field">
+              <legend>Account type</legend>
+              <div class="role-options">
+                <label class="role-option"><input type="radio" name="role" value="student" checked /><span>Student</span></label>
+                <label class="role-option"><input type="radio" name="role" value="teacher" /><span>Teacher</span></label>
+              </div>
+            </fieldset>
+
+            <button class="button button-primary" type="submit">Create account</button>
+          </form>
+
+          <p class="auth-footer">Already have an account? <a href="login.html">Log in</a></p>
+        </div>
+
+        <p class="auth-footer">&copy; StudyHub</p>
+      </section>
+
+      <aside class="visual-panel" aria-hidden="true">
+        <h2 class="visual-headline">Study smarter,<br /><span>not harder.</span></h2>
+        <p class="visual-caption">Tasks, schedules, notes and a focus timer in one place.</p>
+      </aside>
+    </main>
+
+    <script src="js/auth.js" defer></script>
+    <script src="js/auth-forms.js" defer></script>
+  </body>
+</html>
