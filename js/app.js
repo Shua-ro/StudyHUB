@@ -3,6 +3,38 @@ const WORKFLOW_PATH = ["To do", "In progress", "In review", "Done", "Archived"];
 
 // Progress excludes Archived (it's 100% by definition)
 const PROGRESS_PATH = WORKFLOW_PATH.filter((status) => status !== "Archived");
+function getDaysRemaining(task) {
+  if (!task.dueDate) return Infinity;
+  const due = new Date(task.dueDate + "T00:00:00");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((due - today) / 86400000);
+}
+
+function getIsOverdue(task) {
+  return !isFinished(task) && task.dueDate && getDaysRemaining(task) < 0;
+}
+
+function getDaysLabel(task) {
+  if (isFinished(task)) return "Finished";
+  if (!task.dueDate) return "No due date";
+  const d = getDaysRemaining(task);
+  if (d < 0) return `${Math.abs(d)} day(s) overdue`;
+  if (d === 0) return "Due today";
+  return `${d} day(s) left`;
+}
+
+function getStatusClass(status) {
+  return "status-" + String(status).toLowerCase().replace(/\s+/g, "-");
+}
+
+function getStudyHours(task) {
+  return (task.estimatedMinutes || 0) / 60;
+}
+// Check if a task is in a finished state
+function isFinished(task) {
+  return task.status === "Done" || task.status === "Archived";
+}
 
 // Allowed transitions per status
 const TRANSITION_MATRIX = {
@@ -109,7 +141,6 @@ const session = {
   displayName: currentUser?.displayName ?? "Guest",
   role: currentUser?.role ?? null,
 };
-
 
 const CAPABILITIES = {
   // Tasks
@@ -634,7 +665,6 @@ const state = {
   },
 };
 
-
 const STORAGE_KEY = "studyhub-state-v1";
 const SCHEMA_VERSION = 1;
 const DEFAULT_STATE = JSON.parse(JSON.stringify(state));
@@ -884,7 +914,6 @@ if (Array.isArray(window.STUDYHUB_TASKS)) {
   );
 }
 
-
 function normalize(value) {
   return String(value ?? "")
     .trim()
@@ -1073,7 +1102,6 @@ function attemptTransition(
   };
 }
 
-
 function renderRecords(records) {
   const tableBody = document.querySelector("#task-table-body");
 
@@ -1155,7 +1183,6 @@ function renderSummary(records) {
     `${(totalStudyMinutes / 60).toFixed(1)} hours`,
   );
 }
-
 
 function percentOf(part, whole) {
   return whole > 0 ? Math.round((part / whole) * 100) : 0;
@@ -2142,7 +2169,6 @@ function transitionTask(id, nextStatus) {
   return true;
 }
 
-
 function logAudit(action, targetId, details) {
   const entry = {
     timestamp: new Date().toISOString(),
@@ -2175,7 +2201,6 @@ function renderAuditLog() {
         .join("")
     : `<tr><td colspan="5">No actions recorded yet.</td></tr>`;
 }
-
 
 const SCHEDULE_DAYS = [
   "Monday",
@@ -2443,7 +2468,6 @@ if (scheduleBody) {
   });
 }
 
-
 function generateNoteId() {
   const numbers = state.notes
     .map((item) => Number(item.id.replace("NOTE-", "")))
@@ -2618,7 +2642,6 @@ if (noteList) {
     }
   });
 }
-
 
 function formatMoney(value) {
   return `$${Number(value).toLocaleString("en-US", {
@@ -2860,7 +2883,6 @@ if (expenseBody) {
     }
   });
 }
-
 
 const taskList = document.querySelector("#task-list");
 
@@ -3422,7 +3444,6 @@ function bindSelect(selector, updateState) {
   });
 }
 
-
 const nav = document.querySelector(".primary-nav");
 
 if (nav) {
@@ -3446,7 +3467,6 @@ if (nav) {
     link.setAttribute("aria-current", "page");
   });
 }
-
 
 const archivesDialog = document.querySelector("#archives-dialog");
 const openArchivesButton = document.querySelector("#open-archives");
@@ -3476,7 +3496,6 @@ if (archivesDialog && openArchivesButton) {
   });
 }
 
-
 const focusToggle = document.querySelector("#focus-toggle");
 
 if (focusToggle) {
@@ -3488,7 +3507,6 @@ if (focusToggle) {
     document.body.classList.toggle("focus-mode", nextPressed);
   });
 }
-
 
 function setText(selector, value) {
   const element = document.querySelector(selector);
@@ -3527,7 +3545,6 @@ function escapeHTML(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
 
 function runStableIdAssertions() {
   const originalRecords = state.records.map((record) => ({ ...record }));
@@ -3647,7 +3664,6 @@ function runWorkflowTransitionAssertions() {
   );
 }
 
-
 const THEME_KEY = "studyhub-theme";
 const THEME_CHOICES = {
   dark: "Dark",
@@ -3720,7 +3736,6 @@ if (themeOptions.length) {
     });
   }
 }
-
 
 function updateThemeControls() {
   themeOptions.forEach((input) => {
