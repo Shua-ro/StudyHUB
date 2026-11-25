@@ -77,7 +77,7 @@ const TRANSITION_MATRIX = {
   Done: {
     Archived: {
       actionLabel: "Archive",
-      condition: "hasTaskBasics",
+      condition: "isDone",
       row: true,
       emphasis: false,
     },
@@ -98,6 +98,13 @@ const TRANSITION_CONDITIONS = {
       String(task.title ?? "").trim() &&
       String(task.subject ?? "").trim() &&
       (task.dueDate || task.classroomAssignmentId),
+    ),
+
+  // For archiving a Done task — only needs title/subject (dueDate optional)
+  isDone: (task) =>
+    Boolean(
+      String(task.title ?? "").trim() &&
+      String(task.subject ?? "").trim(),
     ),
 };
 
@@ -174,6 +181,7 @@ const ROLE_PERMISSIONS = {
     CAPABILITIES.TASK_STATUS,
     CAPABILITIES.TASK_ARCHIVE,
     CAPABILITIES.CLASS_JOIN,
+    CAPABILITIES.CLASS_CREATE,
     CAPABILITIES.POMODORO_USE,
     CAPABILITIES.EXPENSE_CREATE,
     CAPABILITIES.EXPENSE_EDIT,
@@ -198,7 +206,7 @@ function allowedOn(capability, task) {
   if (!allowed(capability)) return false;
   if (capability === CAPABILITIES.TASK_EDIT_OWN) return canEditTask(task);
   if (capability === CAPABILITIES.TASK_STATUS) return canEditTask(task);
-  if (capability === CAPABILITIES.TASK_ARCHIVE) return canEditTask(task);
+  if (capability === CAPABILITIES.TASK_ARCHIVE) return task.status === "Done"; // allow archiving Done tasks
   return true; // non-ownership capabilities
 }
 
