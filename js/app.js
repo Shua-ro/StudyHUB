@@ -928,6 +928,12 @@ if (Array.isArray(window.STUDYHUB_SCHEDULES)) {
   state.schedules = window.STUDYHUB_SCHEDULES;
 }
 
+/* Notes from the database. PHP writes window.STUDYHUB_NOTES in index.php.
+   They replace the sample notes and the notes saved in localStorage. */
+if (Array.isArray(window.STUDYHUB_NOTES)) {
+  state.notes = window.STUDYHUB_NOTES;
+}
+
 function normalize(value) {
   return String(value ?? "")
     .trim()
@@ -2090,6 +2096,25 @@ async function saveScheduleToServer(payload) {
   }
 }
 
+/* Send a note change to the database (api/notes.php).
+   Returns the answer from PHP, or null if the save failed. */
+async function saveNoteToServer(payload) {
+  try {
+    const response = await fetch("api/notes.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.message || "Save failed.");
+    return data;
+  } catch (error) {
+    showMessage(`Could not save to the database: ${error.message}`);
+    return null;
+  }
+}
+
 function addTask(task) {
   if (!allowed(CAPABILITIES.TASK_CREATE)) {
     showMessage("You don't have permission to create tasks.");
@@ -2544,6 +2569,17 @@ function addNote(entry) {
   showMessage(`${record.id} was added.`);
   render();
   renderNoteForm();
+
+  /* Save in the database. PHP gives the note its real ID. */
+  saveNoteToServer({ action: "create", note: record }).then((data) => {
+    if (data && data.id && data.id !== record.id) {
+      state.notes = state.notes.map((n) =>
+        n.id === record.id ? { ...n, id: data.id } : n,
+      );
+      render();
+    }
+  });
+
   return "";
 }
 
@@ -2563,6 +2599,10 @@ function updateNote(id, updates) {
   showMessage(`${id} was updated.`);
   render();
   renderNoteForm();
+
+  /* Save in the database. */
+  saveNoteToServer({ action: "update", id, updates });
+
   return "";
 }
 
@@ -2580,6 +2620,10 @@ function deleteNote(id) {
   showMessage(`${id} was deleted.`);
   render();
   if (wasEditing) renderNoteForm();
+
+  /* Save in the database. */
+  saveNoteToServer({ action: "delete", id });
+
   return true;
 }
 
