@@ -6,7 +6,7 @@ require __DIR__ . '/includes/notes.php';
 require __DIR__ . '/includes/audit.php';
 require __DIR__ . '/includes/preferences.php';
 
-$currentUser = ['id' => '1', 'name' => 'Test Student', 'role' => 'student'];  // TEMP
+/* $currentUser = ['id' => '1', 'name' => 'Test Student', 'role' => 'student']; */  // TEMP
 $_SESSION['user'] = $currentUser;  // TEMP: lets api/tasks.php know the user
 
 $tasks = get_tasks_for_user($conn, (int) $currentUser['id']);
@@ -14,7 +14,7 @@ $schedules = get_schedules_for_user($conn, (int) $currentUser['id']);
 $notes = get_notes_for_user($conn, (int) $currentUser['id']);
 $auditLog = get_audit_for_user($conn, (int) $currentUser['id']);
 $preferences = get_preferences_for_user($conn, (int) $currentUser['id']);
-/* $currentUser = require_login(); */   // not logged in -> login.php
+$currentUser = require_login();   // not logged in -> login.php
 ?>
 <!doctype html>
 <html lang="en">
