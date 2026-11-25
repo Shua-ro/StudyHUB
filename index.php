@@ -1,6 +1,11 @@
 <?php
 require __DIR__ . '/includes/auth.php';
+require __DIR__ . '/includes/tasks.php';
+
 $currentUser = ['id' => '1', 'name' => 'Test Student', 'role' => 'student'];  // TEMP
+$_SESSION['user'] = $currentUser;  // TEMP: lets api/tasks.php know the user
+
+$tasks = get_tasks_for_user($conn, (int) $currentUser['id']);
 /* $currentUser = require_login(); */   // not logged in -> login.php
 ?>
 <!doctype html>
@@ -1449,6 +1454,10 @@ $currentUser = ['id' => '1', 'name' => 'Test Student', 'role' => 'student'];  //
           'name' => $currentUser['name'],
           'role' => $currentUser['role'],
       ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    </script>
+    <script>
+      /* Tasks from the database. PHP writes them here. */
+      window.STUDYHUB_TASKS = <?= json_encode($tasks, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script src="js/auth.js" defer></script>
     <script src="js/app.js" defer></script>

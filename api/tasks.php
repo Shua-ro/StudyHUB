@@ -1,0 +1,157 @@
+<?php
+// api/tasks.php
+// The page sends task changes here. This file saves them in the database.
+// It receives JSON and answers with JSON.
+//
+// Actions:  create  |  update  |  status
+
+require __DIR__ . '/../includes/auth.php';
+require __DIR__ . '/../includes/db.php';
+
+header('Content-Type: application/json; charset=utf-8');
+
+// Send an answer and stop.
+function reply($data, $code = 200)
+{
+    http_response_code($code);
+    echo json_encode($data);
+    exit;
+}
+
+// "TASK-12" -> 12
+function task_number($id)
+{
+    return (int) str_replace('TASK-', '', (string) $id);
+}
+
+// Get one task, but only if it belongs to this user. Returns null if not found.
+function find_task($conn, $taskId, $userId)
+{
+    $stmt = mysqli_prepare($conn, 'SELECT id, status FROM tasks WHERE id = ? AND user_id = ?');
+    mysqli_stmt_bind_param($stmt, 'ii', $taskId, $userId);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    return mysqli_fetch_assoc($result);
+}
+
+// Keep a date only if it looks like 2026-12-31. Otherwise return null.
+function clean_date($value)
+{
+    $value = (string) $value;
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : null;
+}
+
+// ---------- Check the request ----------
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    reply(['ok' => false, 'message' => 'Use POST.'], 405);
+}
+
+$user = current_user();
+if (!$user) {
+    reply(['ok' => false, 'message' => 'You are not logged in.'], 401);
+}
+$userId = (int) $user['id'];
+
+$input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) {
+    reply(['ok' => false, 'message' => 'Bad data.'], 400);
+}
+
+$action     = $input['action'] ?? '';
+$priorities = ['Low', 'Medium', 'High'];
+$statuses   = ['To do', 'In progress', 'In review', 'Done', 'Archived'];
+
+try {
+
+    // ---------- CREATE a task ----------
+    if ($action === 'create') {
+        $t = $input['task'] ?? [];
+
+        $title   = mb_substr(trim($t['title'] ?? ''), 0, 100);
+        $subject = mb_substr(trim($t['subject'] ?? ''), 0, 80);
+        if ($title === '' || $subject === '') {
+            reply(['ok' => false, 'message' => 'Title and subject are required.'], 400);
+        }
+
+        $description = (string) ($t['description'] ?? '');
+        $dueDate     = clean_date($t['dueDate'] ?? '');
+        $priority    = in_array($t['priority'] ?? '', $priorities, true) ? $t['priority'] : 'Medium';
+        $minutes     = max(1, (int) ($t['estimatedMinutes'] ?? 60));
+        $tags        = is_array($t['tags'] ?? null) ? mb_substr(implode(',', $t['tags']), 0, 255) : null;
+        $reminder    = clean_date($t['reminderDate'] ?? '');
+
+        $sql = 'INSERT INTO tasks
+                  (user_id, title, subject, description, due_date, priority, estimated_minutes, tags, reminder_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, 'isssssiss',
+            $userId, $title, $subject, $description, $dueDate, $priority, $minutes, $tags, $reminder);
+        mysqli_stmt_execute($stmt);
+
+        reply(['ok' => true, 'id' => 'TASK-' . mysqli_insert_id($conn)]);
+    }
+
+    // ---------- UPDATE the details of a task ----------
+    if ($action === 'update') {
+        $taskId = task_number($input['id'] ?? '');
+        if (!find_task($conn, $taskId, $userId)) {
+            reply(['ok' => false, 'message' => 'Task not found.'], 404);
+        }
+
+        $u = $input['updates'] ?? [];
+        $title   = mb_substr(trim($u['title'] ?? ''), 0, 100);
+        $subject = mb_substr(trim($u['subject'] ?? ''), 0, 80);
+        if ($title === '' || $subject === '') {
+            reply(['ok' => false, 'message' => 'Title and subject are required.'], 400);
+        }
+        $description = (string) ($u['description'] ?? '');
+        $dueDate     = clean_date($u['dueDate'] ?? '');
+        $priority    = in_array($u['priority'] ?? '', $priorities, true) ? $u['priority'] : 'Medium';
+
+        $sql = 'UPDATE tasks
+                SET title = ?, subject = ?, description = ?, due_date = ?, priority = ?
+                WHERE id = ? AND user_id = ?';
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, 'sssssii',
+            $title, $subject, $description, $dueDate, $priority, $taskId, $userId);
+        mysqli_stmt_execute($stmt);
+
+        reply(['ok' => true]);
+    }
+
+    // ---------- Change the STATUS of a task ----------
+    if ($action === 'status') {
+        $taskId = task_number($input['id'] ?? '');
+        $task = find_task($conn, $taskId, $userId);
+        if (!$task) {
+            reply(['ok' => false, 'message' => 'Task not found.'], 404);
+        }
+
+        $next = $input['status'] ?? '';
+        if (!in_array($next, $statuses, true)) {
+            reply(['ok' => false, 'message' => 'Bad status.'], 400);
+        }
+        $previous = $task['status'];
+        $label    = mb_substr((string) ($input['actionLabel'] ?? ''), 0, 60);
+
+        // Save the new status
+        $stmt = mysqli_prepare($conn, 'UPDATE tasks SET status = ? WHERE id = ? AND user_id = ?');
+        mysqli_stmt_bind_param($stmt, 'sii', $next, $taskId, $userId);
+        mysqli_stmt_execute($stmt);
+
+        // Save one line in the history
+        $stmt = mysqli_prepare($conn,
+            'INSERT INTO task_history (task_id, previous_status, next_status, action_label) VALUES (?, ?, ?, ?)');
+        mysqli_stmt_bind_param($stmt, 'isss', $taskId, $previous, $next, $label);
+        mysqli_stmt_execute($stmt);
+
+        reply(['ok' => true]);
+    }
+
+    reply(['ok' => false, 'message' => 'Unknown action.'], 400);
+
+} catch (Exception $e) {
+    error_log('api/tasks.php error: ' . $e->getMessage());
+    reply(['ok' => false, 'message' => 'Database error.'], 500);
+}

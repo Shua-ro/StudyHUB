@@ -874,6 +874,16 @@ function restoreState() {
 
 restoreState();
 
+/* Tasks from the database. PHP writes window.STUDYHUB_TASKS in index.php.
+   They replace the sample tasks and the tasks saved in localStorage.
+   (Saving back to the database comes in the next step.) */
+if (Array.isArray(window.STUDYHUB_TASKS)) {
+  state.records = window.STUDYHUB_TASKS.filter((t) => t.status !== "Archived");
+  state.archivedRecords = window.STUDYHUB_TASKS.filter(
+    (t) => t.status === "Archived",
+  );
+}
+
 
 function normalize(value) {
   return String(value ?? "")
@@ -2001,6 +2011,25 @@ function generateTaskId() {
   return `TASK-${String(nextNumber).padStart(3, "0")}`;
 }
 
+/* Send a change to the database (api/tasks.php).
+   Returns the answer from PHP, or null if the save failed. */
+async function saveToServer(payload) {
+  try {
+    const response = await fetch("api/tasks.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.message || "Save failed.");
+    return data;
+  } catch (error) {
+    showMessage(`Could not save to the database: ${error.message}`);
+    return null;
+  }
+}
+
 function addTask(task) {
   if (!allowed(CAPABILITIES.TASK_CREATE)) {
     showMessage("You don't have permission to create tasks.");
@@ -2011,6 +2040,16 @@ function addTask(task) {
   logAudit("CREATE", task.id, task.title);
   state.page = 1;
   render();
+
+  /* Save in the database. PHP gives the task its real ID. */
+  saveToServer({ action: "create", task }).then((data) => {
+    if (data && data.id && data.id !== task.id) {
+      state.records = state.records.map((record) =>
+        record.id === task.id ? { ...record, id: data.id } : record,
+      );
+      render();
+    }
+  });
   return true;
 }
 
@@ -2034,6 +2073,7 @@ function updateTask(id, updates) {
   logAudit("UPDATE", id, "Task details edited");
   showMessage(`${id} was updated.`);
   render();
+  saveToServer({ action: "update", id, updates });
   return true;
 }
 
@@ -2093,6 +2133,12 @@ function transitionTask(id, nextStatus) {
     `${id}: ${result.historyEntry.previousStatus} → ${result.historyEntry.nextStatus} (${result.historyEntry.actionLabel}).${archiving ? " Moved to Archives." : ""}`,
   );
   render();
+  saveToServer({
+    action: "status",
+    id,
+    status: result.record.status,
+    actionLabel: result.historyEntry.actionLabel,
+  });
   return true;
 }
 
