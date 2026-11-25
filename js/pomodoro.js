@@ -79,14 +79,29 @@
   // Persistence
   // ============================================================
   function loadState() {
+    // First, load from server if available (window.STUDYHUB_POMODORO set by PHP in index.php)
+    if (window.STUDYHUB_POMODORO && typeof window.STUDYHUB_POMODORO === 'object') {
+      const serverPrefs = window.STUDYHUB_POMODORO;
+      state.durations = {
+        focus: serverPrefs.focusDuration || DEFAULT_DURATIONS.focus,
+        short: serverPrefs.shortDuration || DEFAULT_DURATIONS.short,
+        long: serverPrefs.longDuration || DEFAULT_DURATIONS.long,
+      };
+      // Reset timer to new durations if not running
+      if (!state.isRunning) {
+        state.timeRemaining = getCurrentDuration();
+      }
+    }
+
+    // Then, load from localStorage (overrides server for session-specific state)
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         // Merge with defaults, preserving any new fields
         state = { ...state, ...parsed };
-        // Ensure durations object exists
-        state.durations = { ...DEFAULT_DURATIONS, ...(parsed.durations || {}) };
+        // Ensure durations object exists (localStorage takes precedence for durations)
+        state.durations = { ...state.durations, ...(parsed.durations || {}) };
         // Reset timer if it was running (don't persist running state)
         state.isRunning = false;
         state.timerId = null;
@@ -365,9 +380,34 @@
     }
 
     saveState();
+    saveToServer();
     updateDisplay();
     toggleSettings();
     showMessage('Timer durations saved.');
+  }
+
+  async function saveToServer() {
+    try {
+      const response = await fetch('api/pomodoro.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          action: 'update',
+          preferences: {
+            focusDuration: state.durations.focus,
+            shortDuration: state.durations.short,
+            longDuration: state.durations.long,
+          }
+        })
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        console.warn('[Pomodoro] Server save failed:', data.message);
+      }
+    } catch (e) {
+      console.warn('[Pomodoro] Failed to save to server:', e);
+    }
   }
 
   function restoreDefaults() {
@@ -376,6 +416,7 @@
       state.timeRemaining = getCurrentDuration();
     }
     saveState();
+    saveToServer();
     updateDisplay();
     showMessage('Default durations restored.');
   }

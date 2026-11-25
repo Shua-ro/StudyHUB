@@ -39,3 +39,32 @@ function get_preferences_for_user($conn, $userId)
         'pageSize' => 10,
     ];
 }
+
+// Get Pomodoro preferences for one user.
+// Returns array with durations in seconds.
+function get_pomodoro_preferences_for_user($conn, $userId)
+{
+    $sql = 'SELECT focus_duration, short_duration, long_duration
+            FROM user_pomodoro_preferences
+            WHERE user_id = ?';
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, 'i', $userId);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $row = mysqli_fetch_assoc($result);
+
+    if ($row) {
+        return [
+            'focusDuration' => (int) $row['focus_duration'],
+            'shortDuration' => (int) $row['short_duration'],
+            'longDuration'  => (int) $row['long_duration'],
+        ];
+    }
+
+    // Defaults if no row exists (in seconds)
+    return [
+        'focusDuration' => 1500,  // 25 min
+        'shortDuration' => 300,   // 5 min
+        'longDuration'  => 900,   // 15 min
+    ];
+}

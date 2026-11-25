@@ -19,12 +19,12 @@ function current_user(): ?array
     ];
 }
 
-/** Send the visitor to login.php if not logged in. */
+/** Send the visitor to login.html if not logged in. */
 function require_login(): array
 {
     $user = current_user();
     if (!$user) {
-        header('Location: login.php');
+        header('Location: login.html');
         exit;
     }
     return $user;

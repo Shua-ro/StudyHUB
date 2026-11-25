@@ -23,7 +23,7 @@
   /* The server owns the session now. logout.php clears it. */
   function clearSession() {}
 
-  /* Show/Hide password buttons (used by login.php and signup.php). */
+  /* Show/Hide password buttons (used by login.html and signup.html). */
   function setUpPasswordToggles() {
     document.querySelectorAll("[data-password-toggle]").forEach((button) => {
       button.addEventListener("click", () => {

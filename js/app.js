@@ -210,7 +210,7 @@ function allowedOn(capability, task) {
 }
 
 if (!currentUser) {
-  window.location.replace("login.php");
+  window.location.replace("login.html");
 }
 
 // Strip out UI elements not allowed for current view, then show page

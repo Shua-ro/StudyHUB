@@ -6,15 +6,14 @@ require __DIR__ . '/includes/notes.php';
 require __DIR__ . '/includes/audit.php';
 require __DIR__ . '/includes/preferences.php';
 
-/* $currentUser = ['id' => '1', 'name' => 'Test Student', 'role' => 'student']; */  // TEMP
-$_SESSION['user'] = $currentUser;  // TEMP: lets api/tasks.php know the user
+$currentUser = require_login();   // not logged in -> login.html
 
 $tasks = get_tasks_for_user($conn, (int) $currentUser['id']);
 $schedules = get_schedules_for_user($conn, (int) $currentUser['id']);
 $notes = get_notes_for_user($conn, (int) $currentUser['id']);
 $auditLog = get_audit_for_user($conn, (int) $currentUser['id']);
 $preferences = get_preferences_for_user($conn, (int) $currentUser['id']);
-$currentUser = require_login();   // not logged in -> login.php
+$pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUser['id']);
 ?>
 <!doctype html>
 <html lang="en">
@@ -1482,6 +1481,10 @@ $currentUser = require_login();   // not logged in -> login.php
     <script>
       /* User preferences from the database. PHP writes them here. */
       window.STUDYHUB_PREFERENCES = <?= json_encode($preferences, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    </script>
+    <script>
+      /* Pomodoro preferences from the database. PHP writes them here. */
+      window.STUDYHUB_POMODORO = <?= json_encode($pomodoroPreferences, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script src="js/auth.js" defer></script>
     <script src="js/app.js" defer></script>
