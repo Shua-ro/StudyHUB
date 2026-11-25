@@ -914,6 +914,12 @@ if (Array.isArray(window.STUDYHUB_TASKS)) {
   );
 }
 
+/* Schedules from the database. PHP writes window.STUDYHUB_SCHEDULES in index.php.
+   They replace the sample schedules and the schedules saved in localStorage. */
+if (Array.isArray(window.STUDYHUB_SCHEDULES)) {
+  state.schedules = window.STUDYHUB_SCHEDULES;
+}
+
 function normalize(value) {
   return String(value ?? "")
     .trim()
@@ -2057,6 +2063,25 @@ async function saveToServer(payload) {
   }
 }
 
+/* Send a schedule change to the database (api/schedules.php).
+   Returns the answer from PHP, or null if the save failed. */
+async function saveScheduleToServer(payload) {
+  try {
+    const response = await fetch("api/schedules.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.message || "Save failed.");
+    return data;
+  } catch (error) {
+    showMessage(`Could not save to the database: ${error.message}`);
+    return null;
+  }
+}
+
 function addTask(task) {
   if (!allowed(CAPABILITIES.TASK_CREATE)) {
     showMessage("You don't have permission to create tasks.");
@@ -2267,6 +2292,17 @@ function addSchedule(entry) {
   showMessage(`${record.id} was added.`);
   render();
   renderScheduleForm();
+
+  /* Save in the database. PHP gives the schedule its real ID. */
+  saveScheduleToServer({ action: "create", schedule: record }).then((data) => {
+    if (data && data.id && data.id !== record.id) {
+      state.schedules = state.schedules.map((s) =>
+        s.id === record.id ? { ...s, id: data.id } : s,
+      );
+      render();
+    }
+  });
+
   return "";
 }
 
@@ -2287,6 +2323,10 @@ function updateSchedule(id, updates) {
   showMessage(`${id} was updated.`);
   render();
   renderScheduleForm();
+
+  /* Save in the database. */
+  saveScheduleToServer({ action: "update", id, updates });
+
   return "";
 }
 
@@ -2306,6 +2346,10 @@ function deleteSchedule(id) {
   showMessage(`${id} was deleted.`);
   render();
   if (wasEditing) renderScheduleForm();
+
+  /* Save in the database. */
+  saveScheduleToServer({ action: "delete", id });
+
   return true;
 }
 
