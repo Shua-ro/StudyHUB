@@ -1920,6 +1920,7 @@ $announcements = get_active_announcements($conn, $currentUser['role']);
     <script src="js/auth.js" defer></script>
     <script src="js/app.js" defer></script>
     <script src="js/classroom.js" defer></script>
+    <script src="js/classroom_tasks.js" defer></script>
     <script src="js/pomodoro.js" defer></script>
   </body>
 </html>
