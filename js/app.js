@@ -233,6 +233,13 @@ function applyRoleView() {
   if (currentUser) {
     setLabel("#user-label", currentUser.displayName);
     setLabel("#user-role", ROLES[currentUser.role]?.label ?? currentUser.role);
+    const initials = String(currentUser.displayName ?? "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join("");
+    setLabel("#user-initials", initials || "?");
   }
 
   if (currentView === "admin") {
@@ -914,6 +921,12 @@ function showMessage(message) {
 
   messageRegion.textContent = message;
   messageRegion.hidden = false;
+
+  // The message floats over the page, so clear it after a short read.
+  clearTimeout(showMessage.timer);
+  showMessage.timer = setTimeout(() => {
+    messageRegion.hidden = true;
+  }, 4500);
 }
 
 // Toast notification - shows a temporary message that auto-dismisses
@@ -1166,6 +1179,69 @@ function renderSummary(records) {
     "#summary-study-time",
     `${(totalStudyMinutes / 60).toFixed(1)} hours`,
   );
+}
+
+/* Dashboard "Next up": the three most urgent unfinished tasks. */
+function getDueBadge(task) {
+  if (!task.dueDate) return { text: "No due date", tone: "muted" };
+  const days = getDaysRemaining(task);
+  if (days < 0) {
+    const n = Math.abs(days);
+    return { text: `Overdue · ${n} day${n === 1 ? "" : "s"}`, tone: "danger" };
+  }
+  if (days === 0) return { text: "Due today", tone: "warning" };
+  if (days === 1) return { text: "Due tomorrow", tone: "warning" };
+  const date = new Date(task.dueDate + "T00:00:00").toLocaleDateString(
+    undefined,
+    { weekday: "short", month: "short", day: "numeric" },
+  );
+  return { text: `Due ${date}`, tone: "neutral" };
+}
+
+function renderNextUp() {
+  const list = document.querySelector("#next-up-list");
+  if (!list) return;
+
+  const upcoming = state.records
+    .filter((task) => !isFinished(task))
+    .sort((a, b) => {
+      const dueA = getDaysRemaining(a);
+      const dueB = getDaysRemaining(b);
+      if (dueA !== dueB) return dueA < dueB ? -1 : 1;
+      return priorityRank(b.priority) - priorityRank(a.priority);
+    })
+    .slice(0, 3);
+
+  if (!upcoming.length) {
+    list.innerHTML = `
+      <li class="next-up-empty">
+        <p><strong>You're all caught up.</strong> Add a task to plan your next study session.</p>
+      </li>`;
+    return;
+  }
+
+  list.innerHTML = upcoming
+    .map((task) => {
+      const badge = getDueBadge(task);
+      const [nextStatus, transition] =
+        (allowedOn(CAPABILITIES.TASK_STATUS, task) &&
+          getAvailableTransitions(task).find(([, t]) => t.row && t.emphasis)) ||
+        [];
+      return `
+        <li class="next-up-item">
+          <div class="next-up-text">
+            <p class="next-up-title">${escapeHTML(task.title)}</p>
+            <p class="next-up-meta">${escapeHTML(task.subject)} · ${escapeHTML(task.status)}</p>
+          </div>
+          <span class="due-badge" data-tone="${badge.tone}">${escapeHTML(badge.text)}</span>
+          ${
+            transition
+              ? `<button type="button" class="btn" data-action="transition" data-id="${escapeHTML(task.id)}" data-next-status="${escapeHTML(nextStatus)}">${escapeHTML(transition.actionLabel)}</button>`
+              : ""
+          }
+        </li>`;
+    })
+    .join("");
 }
 
 function percentOf(part, whole) {
@@ -1992,6 +2068,7 @@ function render() {
   const visibleRecords = getVisibleRecords();
 
   renderSummary(getAllTasks());
+  renderNextUp();
   renderMetrics(getAllTasks());
   renderEmptyState(visibleRecords);
   renderRecords(visibleRecords);
@@ -3281,27 +3358,96 @@ function bindSelect(selector, updateState) {
 
 const nav = document.querySelector(".primary-nav");
 
+/* Show one top-level section and mark its nav link as current. */
+function goToSection(targetId) {
+  if (!document.querySelector(`#app > section[id="${targetId}"]`)) return false;
+
+  if (document.body.classList.contains("focus-mode")) {
+    document.querySelector("#focus-toggle")?.click();
+  }
+
+  document.querySelectorAll("#app > section").forEach((section) => {
+    section.hidden = section.id !== targetId;
+  });
+
+  nav?.querySelectorAll("a").forEach((navLink) => {
+    if (navLink.getAttribute("href") === `#${targetId}`) {
+      navLink.setAttribute("aria-current", "page");
+    } else {
+      navLink.removeAttribute("aria-current");
+    }
+  });
+
+  return true;
+}
+
 if (nav) {
   nav.addEventListener("click", (event) => {
     const link = event.target.closest('a[href^="#"]');
     if (!link) return;
 
     event.preventDefault();
-
-    const targetId = link.getAttribute("href").slice(1);
-    if (!document.querySelector(`#app > section[id="${targetId}"]`)) return;
-
-    document.querySelectorAll("#app > section").forEach((section) => {
-      section.hidden = section.id !== targetId;
-    });
-
-    nav.querySelectorAll("a").forEach((navLink) => {
-      navLink.removeAttribute("aria-current");
-    });
-
-    link.setAttribute("aria-current", "page");
+    if (goToSection(link.getAttribute("href").slice(1))) {
+      window.scrollTo({ top: 0 });
+    }
   });
 }
+
+/* In-page shortcuts such as "See all tasks" and the user menu's Settings link. */
+document.addEventListener("click", (event) => {
+  const shortcut = event.target.closest("[data-go]");
+  if (!shortcut) return;
+  event.preventDefault();
+  document.querySelector("#user-menu")?.removeAttribute("open");
+  if (goToSection(shortcut.dataset.go)) window.scrollTo({ top: 0 });
+});
+
+/* Close the user menu on outside click or Escape. */
+const userMenu = document.querySelector("#user-menu");
+if (userMenu) {
+  document.addEventListener("click", (event) => {
+    if (userMenu.open && !userMenu.contains(event.target)) {
+      userMenu.removeAttribute("open");
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && userMenu.open) {
+      userMenu.removeAttribute("open");
+      userMenu.querySelector("summary")?.focus();
+    }
+  });
+}
+
+/* Header "Add task" jumps to the dashboard form. */
+document.querySelector("#add-task-btn")?.addEventListener("click", () => {
+  goToSection("dashboard");
+  const form = document.querySelector("#task-form");
+  if (!form) return;
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelector("#task-title")?.focus({ preventScroll: true });
+});
+
+/* Dashboard "Next up" status buttons reuse the normal workflow transition. */
+document.querySelector("#next-up-list")?.addEventListener("click", (event) => {
+  const button = event.target.closest('[data-action="transition"]');
+  if (button) transitionTask(button.dataset.id, button.dataset.nextStatus);
+});
+
+/* Dashboard "Start focus" opens the focus timer. */
+document.querySelector("#dash-start-focus")?.addEventListener("click", () => {
+  const toggle = document.querySelector("#focus-toggle");
+  if (toggle && toggle.getAttribute("aria-pressed") !== "true") toggle.click();
+  window.scrollTo({ top: 0 });
+});
+
+setText(
+  "#dash-date",
+  new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }),
+);
 
 const archivesDialog = document.querySelector("#archives-dialog");
 const openArchivesButton = document.querySelector("#open-archives");

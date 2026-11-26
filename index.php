@@ -21,7 +21,13 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>StudyHub</title>
-    <link rel="icon" href="data:," />
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    />
     <link rel="stylesheet" href="css/style.css" />
     <script>
       /* Apply the saved theme before first paint to avoid a flash. */
@@ -44,14 +50,42 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
     </script>
   </head>
   <body>
+    <!-- Shared SVG icon sprite (Lucide-style, 24px grid, 1.75 stroke) -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+        <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+        <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+        <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+        <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+        <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+        <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M8 17v-5M13 17V8M18 17v-9"/></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+        <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+        <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 22V4M5 4h11l-2 4 2 4H5"/></symbol>
+        <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6 2h12M6 22h12M7 2v4a5 5 0 0 0 10 0V2M7 22v-4a5 5 0 0 1 10 0v4"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+        <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+        <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+      </defs>
+    </svg>
+
     <header class="app-header" data-view="student teacher admin">
       <a class="app-brand" href="#dashboard" aria-label="StudyHub home">
-        <img src="assets/logo.svg" alt="" />
+        <img src="assets/logo.svg" alt="" width="32" height="32" />
         <span>StudyHub</span>
       </a>
       <p id="app-message" role="status" aria-live="polite" hidden></p>
       <form id="search-form" role="search" data-view="student">
         <label class="sr-only" for="global-search">Search tasks</label>
+        <svg class="icon search-icon" aria-hidden="true"><use href="#i-search" /></svg>
         <input
           id="global-search"
           name="query"
@@ -61,25 +95,44 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         />
       </form>
 
+      <button type="button" id="add-task-btn" class="btn btn-primary" data-view="student">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+        <span class="btn-label">Add task</span>
+      </button>
+
       <button
         type="button"
         id="focus-toggle"
+        class="btn"
         aria-pressed="false"
         data-view="student"
       >
         Focus mode
       </button>
 
-      <div id="user-menu" class="user-menu" data-view="student teacher admin">
-        <span id="user-label"></span>
-        <span id="user-role" class="status-pill status-todo"></span>
-        <button type="button" id="logout-btn">Sign out</button>
-      </div>
+      <details id="user-menu" class="user-menu" data-view="student teacher admin">
+        <summary class="btn">
+          <span class="avatar" id="user-initials" aria-hidden="true"></span>
+          <span id="user-label"></span>
+          <svg class="icon chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg>
+        </summary>
+        <div class="user-menu-panel">
+          <p class="user-menu-role">Signed in as <span id="user-role" class="status-pill status-todo"></span></p>
+          <a href="#settings" class="user-menu-item" data-go="settings" data-view="student">
+            <svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>
+            Settings
+          </a>
+          <button type="button" id="logout-btn" class="user-menu-item">
+            <svg class="icon" aria-hidden="true"><use href="#i-logout" /></svg>
+            Sign out
+          </button>
+        </div>
+      </details>
 
       <!-- Dev-only role switch (shows when ?dev=1 in URL) -->
-      <div id="dev-role-switch" class="dev-only" style="display:none; margin-left:1rem; align-items:center; gap:0.5rem;">
-        <label for="dev-role" style="font-size:0.875rem;">Simulate role:</label>
-        <select id="dev-role" style="padding:0.25rem 0.5rem; font-size:0.875rem;">
+      <div id="dev-role-switch" class="dev-only" style="display:none">
+        <label for="dev-role">Simulate role:</label>
+        <select id="dev-role">
           <option value="student">Student</option>
           <option value="teacher">Teacher</option>
           <option value="admin">Admin</option>
@@ -94,28 +147,20 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
       data-view="student teacher admin"
     >
       <ul>
-        <li data-view="admin"><a href="#admin-dashboard">Dashboard</a></li>
-        <li data-view="teacher"><a href="#teacher-dashboard">Dashboard</a></li>
+        <li data-view="admin"><a href="#admin-dashboard"><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg><span>Dashboard</span></a></li>
+        <li data-view="teacher"><a href="#teacher-dashboard"><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg><span>Dashboard</span></a></li>
         <li data-view="student">
-          <a href="#dashboard" aria-current="page">Dashboard</a>
+          <a href="#dashboard" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg><span>Dashboard</span></a>
         </li>
-        <li data-view="teacher"><a href="#teacher-students">Students</a></li>
-        <li data-view="teacher">
-          <a href="#teacher-submissions">Submissions</a>
-        </li>
-        <li data-view="teacher">
-          <a href="#teacher-feedback">Feedback &amp; Grades</a>
-        </li>
-        <li data-view="teacher">
-          <a href="#teacher-analytics">Class Analytics</a>
-        </li>
-        <li data-view="student"><a href="#student-classroom">Classroom</a></li>
-        <li data-view="teacher"><a href="#teacher-classroom">Classroom</a></li>
-        <li data-view="student"><a href="#tasks">Tasks</a></li>
-        <li data-view="student"><a href="#schedules">Schedules</a></li>
-        <li data-view="student"><a href="#notes">Notes</a></li>
-        <li data-view="student"><a href="#settings">Settings</a></li>
-      </ul>
+        <li data-view="teacher"><a href="#teacher-students"><svg class="icon" aria-hidden="true"><use href="#i-users" /></svg><span>Students</span></a></li>
+        <li data-view="teacher"><a href="#teacher-submissions"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span>Submissions</span></a></li>
+        <li data-view="teacher"><a href="#teacher-feedback"><svg class="icon" aria-hidden="true"><use href="#i-message" /></svg><span>Feedback &amp; Grades</span></a></li>
+        <li data-view="teacher"><a href="#teacher-analytics"><svg class="icon" aria-hidden="true"><use href="#i-chart" /></svg><span>Class Analytics</span></a></li>
+        <li data-view="teacher"><a href="#teacher-classroom"><svg class="icon" aria-hidden="true"><use href="#i-users" /></svg><span>Classroom</span></a></li>
+        <li data-view="student"><a href="#tasks"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg><span>Tasks</span></a></li>
+        <li data-view="student"><a href="#schedules"><svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg><span>Schedules</span></a></li>
+        <li data-view="student"><a href="#notes"><svg class="icon" aria-hidden="true"><use href="#i-note" /></svg><span>Notes</span></a></li>
+        <li data-view="student"><a href="#student-classroom"><svg class="icon" aria-hidden="true"><use href="#i-users" /></svg><span>Classroom</span></a></li>      </ul>
     </nav>
 
     <main id="app" data-view="student teacher admin">
@@ -433,30 +478,45 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         data-view="student"
         aria-labelledby="dashboard-title"
       >
-        <h2 id="dashboard-title">Dashboard</h2>
+        <header class="page-head dashboard-wide">
+          <h2 id="dashboard-title">Today</h2>
+          <p id="dash-date" class="page-sub"></p>
+        </header>
+
+        <!-- Next up: the three most urgent unfinished tasks, rendered by renderNextUp() -->
+        <section id="next-up" class="card dashboard-wide" aria-labelledby="next-up-title">
+          <h3 id="next-up-title" class="card-title">Next up</h3>
+          <ol id="next-up-list" class="next-up-list"></ol>
+          <a href="#tasks" class="text-link" data-go="tasks">See all tasks</a>
+        </section>
 
         <!-- Unit 3 summary values are rendered from JavaScript state. -->
-        <section id="dash-priority" class="dashboard-metric">
+        <section id="dash-priority" class="dashboard-metric stat-card">
+          <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-list" /></svg></span>
           <h3>Total tasks</h3>
           <strong id="summary-total">0</strong>
         </section>
 
-        <section id="dash-tomorrow" class="dashboard-metric">
+        <section id="dash-tomorrow" class="dashboard-metric stat-card">
+          <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-check-circle" /></svg></span>
           <h3>Finished</h3>
           <strong id="summary-completed">0</strong>
         </section>
 
-        <section id="dash-notes" class="dashboard-metric">
+        <section id="dash-notes" class="dashboard-metric stat-card">
+          <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-calendar" /></svg></span>
           <h3>Upcoming</h3>
           <strong id="summary-upcoming">0 due within 7 days</strong>
         </section>
 
-        <section id="dash-top-priority" class="dashboard-metric">
+        <section id="dash-top-priority" class="dashboard-metric stat-card">
+          <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-flag" /></svg></span>
           <h3>Top priority</h3>
-          <strong id="summary-priority">No pending tasks</strong>
+          <strong id="summary-priority" class="clamp-2">No pending tasks</strong>
         </section>
 
-        <section id="dash-focus" class="dashboard-metric">
+        <section id="dash-focus" class="dashboard-metric stat-card">
+          <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-hourglass" /></svg></span>
           <h3>Estimated study time</h3>
           <strong id="summary-study-time">0.0 hours</strong>
         </section>
@@ -464,39 +524,40 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         <!-- UNIT 9: Live derived metrics, rendered by renderMetrics() in app.js -->
         <section
           id="system-metrics"
-          class="content-card dashboard-wide"
+          class="card dashboard-wide"
           aria-labelledby="system-metrics-title"
         >
           <div class="metrics-header">
+            <h3 id="system-metrics-title" class="card-title">Metrics</h3>
             <span class="live-badge"
               ><span class="live-dot" aria-hidden="true"></span>Live</span
             >
           </div>
 
-          <div class="dashboard-grid metrics-kpi-grid">
+          <div class="metrics-kpi-grid">
             <article class="metric-card" data-tone="success">
-              <h4>Completion Rate</h4>
+              <h4><svg class="icon" aria-hidden="true"><use href="#i-check-circle" /></svg>Completion Rate</h4>
               <strong id="metric-completion-rate">0%</strong>
               <div class="metric-meter" aria-hidden="true">
                 <span id="metric-completion-meter"></span>
               </div>
               <small>Finished vs total tasks</small>
             </article>
-            <article class="metric-card" data-tone="info">
-              <h4>Average Study Time</h4>
+            <article class="metric-card" data-tone="neutral">
+              <h4><svg class="icon" aria-hidden="true"><use href="#i-chart" /></svg>Average Study Time</h4>
               <strong id="metric-avg-time">0 min</strong>
               <small>Per active/pending task</small>
             </article>
             <article class="metric-card" data-tone="danger">
-              <h4>Overdue Rate</h4>
+              <h4><svg class="icon" aria-hidden="true"><use href="#i-alert" /></svg>Overdue Rate</h4>
               <strong id="metric-overdue-rate">0%</strong>
               <div class="metric-meter" aria-hidden="true">
                 <span id="metric-overdue-meter"></span>
               </div>
               <small>Past due pending items</small>
             </article>
-            <article class="metric-card" data-tone="warning">
-              <h4>In Progress</h4>
+            <article class="metric-card" data-tone="neutral">
+              <h4><svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>In Progress</h4>
               <strong id="metric-in-progress-count">0</strong>
               <small>Tasks being worked on now</small>
             </article>
@@ -546,6 +607,17 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
           </details>
         </section>
 
+        <section id="dash-study" class="card study-card dashboard-wide" aria-labelledby="dash-study-title">
+          <div>
+            <h3 id="dash-study-title" class="card-title">Study today</h3>
+            <p id="dash-study-summary" class="card-sub">0 minutes · 0 focus sessions</p>
+          </div>
+          <button type="button" id="dash-start-focus" class="btn btn-primary">
+            <svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg>
+            Start focus
+          </button>
+        </section>
+
         <!-- The leader's task form is retained as the ONE authoritative task form. -->
         <form
           id="task-form"
@@ -555,8 +627,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         >
           <div class="form-head">
             <div class="form-intro">
-              <p class="form-eyebrow">MAKE ROOM FOR WHAT MATTERS</p>
-              <h3 id="task-form-title">Add a task</h3>
+              <h3 id="task-form-title" class="card-title">Add a task</h3>
               <p class="form-description">
                 Capture the details now. You can update them whenever plans change.
               </p>
@@ -726,8 +797,8 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
           </fieldset>
 
           <div class="form-actions">
-            <button type="submit" class="btn-primary">Add task</button>
-            <button type="button" id="task-form-reset" class="btn-secondary">Clear form</button>
+            <button type="button" id="task-form-reset" class="btn">Clear form</button>
+            <button type="submit" class="btn btn-primary">Add task</button>
           </div>
         </form>
       </section>
@@ -1070,11 +1141,8 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         <h2 id="focus-title">Focus</h2>
         <div class="content-card focus-panel pomodoro-panel">
           <div class="pomo-heading">
-            <span class="pomo-eyebrow"
-              ><span class="pomo-spark"></span> STUDYHUB · DEEP WORK</span
-            >
-            <h3>Make every minute count.</h3>
-            <p>One task. One session. You've got this.</p>
+            <h3>Focus session</h3>
+            <p>Pick one task, start the timer, and take a break when it rings.</p>
           </div>
           <div class="pomo-modes" role="group" aria-label="Timer mode">
             <button type="button" data-pomo-mode="focus" aria-pressed="true">
@@ -1118,7 +1186,8 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
               aria-expanded="false"
               aria-controls="pomo-settings-form"
             >
-              ⚙ Customize timers <span aria-hidden="true">⌄</span>
+              <span class="pomo-settings-label"><svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>Customize timers</span>
+              <svg class="icon chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg>
             </button>
             <form id="pomo-settings-form" class="pomo-settings-form" hidden>
               <p>Choose your own study and break durations (1–180 minutes).</p>

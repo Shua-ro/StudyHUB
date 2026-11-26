@@ -208,6 +208,16 @@
     if (elements.minutesDisplay) elements.minutesDisplay.textContent = state.minutesToday;
     if (elements.cycleDisplay) elements.cycleDisplay.textContent = `${state.cycle} / 4`;
 
+    // Dashboard "Study today" summary
+    const dashStudy = document.getElementById('dash-study-summary');
+    if (dashStudy) {
+      const minutes = state.minutesToday;
+      const sessions = state.sessionsToday;
+      dashStudy.textContent =
+        `${minutes} minute${minutes === 1 ? '' : 's'} · ` +
+        `${sessions} focus session${sessions === 1 ? '' : 's'}`;
+    }
+
     // Update intention input
     if (elements.intentionInput) {
       elements.intentionInput.value = state.intention;
