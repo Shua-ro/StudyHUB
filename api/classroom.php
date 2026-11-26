@@ -1,4 +1,12 @@
 <?php
+// api/classroom.php
+// Classes (create / list / search / edit / delete), joining by code, and
+// class posts. Used by js/classroom.js and the classroom block in js/app.js.
+// Class tasks and submissions live in api/classroom_tasks.php.
+//
+//   GET  ?q=word   search classes by code, title, subject, section or teacher
+//   POST action =  join_class | create_class | update_class | delete_class
+//                  | create_post | delete_post
 ob_start();
 ini_set('display_errors', '0');
 
@@ -17,274 +25,216 @@ function reply($data, $code = 200)
     exit;
 }
 
-function fetch_all_rows($conn, $sql, $types = '', $params = [])
-{
-    $stmt = mysqli_prepare($conn, $sql);
-    if (!$stmt) {
-        throw new RuntimeException('Prepare failed: ' . mysqli_error($conn));
-    }
-    if ($types !== '' && !empty($params)) {
-        mysqli_stmt_bind_param($stmt, $types, ...$params);
-    }
-    if (!mysqli_stmt_execute($stmt)) {
-        $err = mysqli_stmt_error($stmt);
-        mysqli_stmt_close($stmt);
-        throw new RuntimeException('Execute failed: ' . $err);
-    }
-
-    $rows = [];
-    if (function_exists('mysqli_stmt_get_result')) {
-        $res = @mysqli_stmt_get_result($stmt);
-        if ($res instanceof mysqli_result) {
-            while ($row = mysqli_fetch_assoc($res)) {
-                $rows[] = $row;
-            }
-            mysqli_free_result($res);
-        }
-    }
-    mysqli_stmt_close($stmt);
-    return $rows;
-}
-
-function run_exec($conn, $sql, $types = '', $params = [])
-{
-    $stmt = mysqli_prepare($conn, $sql);
-    if (!$stmt) {
-        throw new RuntimeException('Prepare failed: ' . mysqli_error($conn));
-    }
-    if ($types !== '' && !empty($params)) {
-        mysqli_stmt_bind_param($stmt, $types, ...$params);
-    }
-    if (!mysqli_stmt_execute($stmt)) {
-        $err = mysqli_stmt_error($stmt);
-        mysqli_stmt_close($stmt);
-        throw new RuntimeException('Execute failed: ' . $err);
-    }
-    $info = [
-        'affected_rows' => mysqli_stmt_affected_rows($stmt),
-        'insert_id'     => mysqli_insert_id($conn),
-    ];
-    mysqli_stmt_close($stmt);
-    return $info;
-}
-
 function write_audit($conn, $userId, $action, $entityType, $entityId, $details = '')
 {
     try {
-        run_exec(
+        $stmt = mysqli_prepare(
             $conn,
-            'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
-            'issss',
-            [$userId, $action, $entityType, $entityId, $details]
+            'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)'
         );
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, 'issss', $userId, $action, $entityType, $entityId, $details);
+            mysqli_stmt_execute($stmt);
+        }
     } catch (Throwable $e) {
         // Ignore audit log errors
     }
 }
 
-function clean_date_or_null($value)
+function generate_class_code($conn)
 {
-    $value = trim((string) $value);
-    if ($value === '') {
-        return null;
+    for ($i = 0; $i < 10; $i++) {
+        $code = 'CLS-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+        $stmt = mysqli_prepare($conn, 'SELECT id FROM classrooms WHERE class_code = ? LIMIT 1');
+        mysqli_stmt_bind_param($stmt, 's', $code);
+        mysqli_stmt_execute($stmt);
+        $res = mysqli_stmt_get_result($stmt);
+        if (!mysqli_fetch_assoc($res)) {
+            return $code;
+        }
     }
-    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : false;
+    return 'CLS-' . strtoupper(uniqid());
 }
 
 try {
-    $user = current_user();
-    if (!$user) {
-        reply(['ok' => false, 'message' => 'You are not logged in.'], 401);
-    }
-
-    while (mysqli_more_results($conn)) {
-        mysqli_next_result($conn);
-        if ($extra = mysqli_use_result($conn)) {
-            mysqli_free_result($extra);
-        }
-    }
+    $user = api_user();   // 401 if signed out, 403 if a password change is required
 
     $userId  = (int) $user['id'];
     $role    = (string) ($user['role'] ?? 'student');
-    $isStaff = in_array($role, ['teacher', 'admin', 'super_admin'], true);
+    // Admins and Super Admins can see and manage every class.
+    $isAdmin = in_array($role, ['admin', 'super_admin'], true);
+    $isStaff = $isAdmin || $role === 'teacher';
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $tasks = [];
-        $submissions = [];
-        $analyticsBars = [];
-        $totalStudents = 0;
-        $activeAssignments = 0;
-        $totalSubmissions = 0;
-        $pendingReviews = 0;
-        $submissionRate = '0%';
-        $reviewRate = '0%';
-        $averageGrade = '—';
+        $q = mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 100);
+        $like = '%' . addcslashes($q, '%_\\') . '%';   // % and _ match literally
+        $classrooms = [];
 
-        if ($isStaff) {
-            if (in_array($role, ['admin', 'super_admin'], true)) {
-                $tasks = fetch_all_rows(
+        if ($role === 'teacher') {
+            if ($q !== '') {
+                $stmt = mysqli_prepare(
                     $conn,
-                    'SELECT ct.*, c.title AS classroom_title, c.class_code, u.display_name AS teacher_name,
-                            (SELECT COUNT(*) FROM classroom_members cm WHERE cm.classroom_id = ct.classroom_id) AS class_student_count
-                     FROM classroom_tasks ct
-                     INNER JOIN classrooms c ON c.id = ct.classroom_id
-                     LEFT JOIN users u ON u.id = ct.teacher_id
-                     ORDER BY ct.id DESC'
+                    'SELECT c.*, u.display_name AS teacher_name
+                     FROM classrooms c
+                     LEFT JOIN users u ON u.id = c.teacher_id
+                     WHERE c.teacher_id = ?
+                       AND (c.class_code LIKE ? OR c.title LIKE ? OR c.subject LIKE ? OR c.section LIKE ?)
+                     ORDER BY c.id DESC'
                 );
-
-                $submissions = fetch_all_rows(
-                    $conn,
-                    'SELECT cs.*, ct.title AS task_title, ct.max_score, ct.due_date,
-                            c.id AS classroom_id, c.title AS classroom_title, c.class_code,
-                            u.display_name AS student_name
-                     FROM classroom_submissions cs
-                     INNER JOIN classroom_tasks ct ON ct.id = cs.task_id
-                     INNER JOIN classrooms c ON c.id = ct.classroom_id
-                     INNER JOIN users u ON u.id = cs.student_id
-                     ORDER BY cs.submitted_at DESC, cs.id DESC'
-                );
-
-                $stRows = fetch_all_rows(
-                    $conn,
-                    'SELECT COUNT(DISTINCT student_id) AS cnt FROM classroom_members'
-                );
+                mysqli_stmt_bind_param($stmt, 'issss', $userId, $like, $like, $like, $like);
             } else {
-                $tasks = fetch_all_rows(
+                $stmt = mysqli_prepare(
                     $conn,
-                    'SELECT ct.*, c.title AS classroom_title, c.class_code, u.display_name AS teacher_name,
-                            (SELECT COUNT(*) FROM classroom_members cm WHERE cm.classroom_id = ct.classroom_id) AS class_student_count
-                     FROM classroom_tasks ct
-                     INNER JOIN classrooms c ON c.id = ct.classroom_id
-                     LEFT JOIN users u ON u.id = ct.teacher_id
+                    'SELECT c.*, u.display_name AS teacher_name
+                     FROM classrooms c
+                     LEFT JOIN users u ON u.id = c.teacher_id
                      WHERE c.teacher_id = ?
-                     ORDER BY ct.id DESC',
-                    'i',
-                    [$userId]
+                     ORDER BY c.id DESC'
                 );
-
-                $submissions = fetch_all_rows(
+                mysqli_stmt_bind_param($stmt, 'i', $userId);
+            }
+        } elseif ($isAdmin) {
+            if ($q !== '') {
+                $stmt = mysqli_prepare(
                     $conn,
-                    'SELECT cs.*, ct.title AS task_title, ct.max_score, ct.due_date,
-                            c.id AS classroom_id, c.title AS classroom_title, c.class_code,
-                            u.display_name AS student_name
-                     FROM classroom_submissions cs
-                     INNER JOIN classroom_tasks ct ON ct.id = cs.task_id
-                     INNER JOIN classrooms c ON c.id = ct.classroom_id
-                     INNER JOIN users u ON u.id = cs.student_id
-                     WHERE c.teacher_id = ?
-                     ORDER BY cs.submitted_at DESC, cs.id DESC',
-                    'i',
-                    [$userId]
+                    'SELECT c.*, u.display_name AS teacher_name
+                     FROM classrooms c
+                     LEFT JOIN users u ON u.id = c.teacher_id
+                     WHERE c.class_code LIKE ? OR c.title LIKE ? OR c.subject LIKE ? OR c.section LIKE ? OR u.display_name LIKE ?
+                     ORDER BY c.id DESC'
                 );
-
-                $stRows = fetch_all_rows(
+                mysqli_stmt_bind_param($stmt, 'sssss', $like, $like, $like, $like, $like);
+            } else {
+                $stmt = mysqli_prepare(
                     $conn,
-                    'SELECT COUNT(DISTINCT cm.student_id) AS cnt
-                     FROM classroom_members cm
-                     INNER JOIN classrooms c ON c.id = cm.classroom_id
-                     WHERE c.teacher_id = ?',
-                    'i',
-                    [$userId]
+                    'SELECT c.*, u.display_name AS teacher_name
+                     FROM classrooms c
+                     LEFT JOIN users u ON u.id = c.teacher_id
+                     ORDER BY c.id DESC'
                 );
-            }
-
-            $gradedCount = 0;
-            $gradePctSum = 0.0;
-            $gradePctCount = 0;
-            $taskSubCounts = [];
-
-            foreach ($submissions as $row) {
-                $tid = (int) $row['task_id'];
-                if (!isset($taskSubCounts[$tid])) {
-                    $taskSubCounts[$tid] = 0;
-                }
-                $taskSubCounts[$tid]++;
-
-                if ($row['status'] === 'graded') {
-                    $gradedCount++;
-                    if ($row['score'] !== null && (float) $row['max_score'] > 0) {
-                        $gradePctSum += ((float) $row['score'] / (float) $row['max_score']) * 100.0;
-                        $gradePctCount++;
-                    }
-                }
-            }
-
-            $totalStudents = (int) ($stRows[0]['cnt'] ?? 0);
-            $activeAssignments = count($tasks);
-            $totalSubmissions = count($submissions);
-            $pendingReviews = max(0, $totalSubmissions - $gradedCount);
-
-            $expectedTotal = 0;
-            foreach ($tasks as $t) {
-                $tid = (int) $t['id'];
-                $cnt = (int) ($taskSubCounts[$tid] ?? 0);
-                $classCount = (int) ($t['class_student_count'] ?? 0);
-                $expectedTotal += $classCount;
-
-                $pct = $classCount > 0 ? min(100, round(($cnt / $classCount) * 100)) : ($cnt > 0 ? 100 : 0);
-                $analyticsBars[] = [
-                    'task_id'         => $tid,
-                    'classroom_id'    => (int) $t['classroom_id'],
-                    'title'           => $t['title'],
-                    'classroom_title' => $t['classroom_title'],
-                    'class_code'      => $t['class_code'],
-                    'submissions'     => $cnt,
-                    'students'        => $classCount,
-                    'percent'         => $pct,
-                ];
-            }
-
-            if ($expectedTotal > 0) {
-                $submissionRate = round(min(100, ($totalSubmissions / $expectedTotal) * 100)) . '%';
-            } elseif ($totalSubmissions > 0) {
-                $submissionRate = '100%';
-            }
-
-            if ($totalSubmissions > 0) {
-                $reviewRate = round(($gradedCount / $totalSubmissions) * 100) . '%';
-            }
-
-            if ($gradePctCount > 0) {
-                $averageGrade = round($gradePctSum / $gradePctCount, 1) . '%';
             }
         } else {
-            $tasks = fetch_all_rows(
-                $conn,
-                'SELECT ct.*, c.title AS classroom_title, c.class_code,
-                        cs.id AS submission_id, cs.submission_text, cs.status AS submission_status,
-                        cs.score, cs.feedback, cs.submitted_at, cs.graded_at
-                 FROM classroom_tasks ct
-                 INNER JOIN classroom_members cm ON cm.classroom_id = ct.classroom_id
-                 INNER JOIN classrooms c ON c.id = ct.classroom_id
-                 LEFT JOIN classroom_submissions cs ON cs.task_id = ct.id AND cs.student_id = ?
-                 WHERE cm.student_id = ?
-                 ORDER BY ct.due_date IS NULL, ct.due_date ASC, ct.id DESC',
-                'ii',
-                [$userId, $userId]
-            );
-
-            foreach ($tasks as $row) {
-                if ($row['submission_id'] !== null) {
-                    $submissions[] = $row;
-                }
+            if ($q !== '') {
+                $stmt = mysqli_prepare(
+                    $conn,
+                    'SELECT c.*, u.display_name AS teacher_name
+                     FROM classroom_members m
+                     INNER JOIN classrooms c ON c.id = m.classroom_id
+                     LEFT JOIN users u ON u.id = c.teacher_id
+                     WHERE m.student_id = ?
+                       AND (c.class_code LIKE ? OR c.title LIKE ? OR c.subject LIKE ? OR c.section LIKE ? OR u.display_name LIKE ?)
+                     ORDER BY c.id DESC'
+                );
+                mysqli_stmt_bind_param($stmt, 'isssss', $userId, $like, $like, $like, $like, $like);
+            } else {
+                $stmt = mysqli_prepare(
+                    $conn,
+                    'SELECT c.*, u.display_name AS teacher_name
+                     FROM classroom_members m
+                     INNER JOIN classrooms c ON c.id = m.classroom_id
+                     LEFT JOIN users u ON u.id = c.teacher_id
+                     WHERE m.student_id = ?
+                     ORDER BY c.id DESC'
+                );
+                mysqli_stmt_bind_param($stmt, 'i', $userId);
             }
         }
 
+        mysqli_stmt_execute($stmt);
+        $res = mysqli_stmt_get_result($stmt);
+        while ($row = mysqli_fetch_assoc($res)) {
+            $classrooms[] = $row;
+        }
+
+        $posts = [];
+        try {
+            if ($isAdmin) {
+                $pstmt = mysqli_prepare(
+                    $conn,
+                    'SELECT p.*, u.display_name AS author_name
+                     FROM classroom_posts p
+                     LEFT JOIN users u ON u.id = p.author_id
+                     ORDER BY p.id DESC'
+                );
+                mysqli_stmt_execute($pstmt);
+            } elseif ($role === 'teacher') {
+                $pstmt = mysqli_prepare(
+                    $conn,
+                    'SELECT p.*, u.display_name AS author_name
+                     FROM classroom_posts p
+                     INNER JOIN classrooms c ON c.id = p.classroom_id
+                     LEFT JOIN users u ON u.id = p.author_id
+                     WHERE c.teacher_id = ?
+                     ORDER BY p.id DESC'
+                );
+                mysqli_stmt_bind_param($pstmt, 'i', $userId);
+                mysqli_stmt_execute($pstmt);
+            } else {
+                $pstmt = mysqli_prepare(
+                    $conn,
+                    'SELECT p.*, u.display_name AS author_name
+                     FROM classroom_posts p
+                     INNER JOIN classroom_members m ON m.classroom_id = p.classroom_id
+                     LEFT JOIN users u ON u.id = p.author_id
+                     WHERE m.student_id = ?
+                     ORDER BY p.id DESC'
+                );
+                mysqli_stmt_bind_param($pstmt, 'i', $userId);
+                mysqli_stmt_execute($pstmt);
+            }
+
+            $pres = mysqli_stmt_get_result($pstmt);
+            while ($prow = mysqli_fetch_assoc($pres)) {
+                $posts[] = $prow;
+            }
+        } catch (Throwable $pe) {
+            $posts = [];
+        }
+
+        $students = [];
+        try {
+            if ($isStaff) {
+                if ($isAdmin) {
+                    $sstmt = mysqli_prepare(
+                        $conn,
+                        'SELECT DISTINCT u.id, u.display_name AS name, c.id AS classroom_id, c.title AS classroom_title
+                         FROM classroom_members m
+                         INNER JOIN users u ON u.id = m.student_id
+                         INNER JOIN classrooms c ON c.id = m.classroom_id
+                         ORDER BY u.display_name ASC'
+                    );
+                    mysqli_stmt_execute($sstmt);
+                } else {
+                    $sstmt = mysqli_prepare(
+                        $conn,
+                        'SELECT DISTINCT u.id, u.display_name AS name, c.id AS classroom_id, c.title AS classroom_title
+                         FROM classroom_members m
+                         INNER JOIN users u ON u.id = m.student_id
+                         INNER JOIN classrooms c ON c.id = m.classroom_id
+                         WHERE c.teacher_id = ?
+                         ORDER BY u.display_name ASC'
+                    );
+                    mysqli_stmt_bind_param($sstmt, 'i', $userId);
+                    mysqli_stmt_execute($sstmt);
+                }
+                $sres = mysqli_stmt_get_result($sstmt);
+                while ($srow = mysqli_fetch_assoc($sres)) {
+                    $srow['submitted'] = 0;
+                    $srow['reviewed']  = 0;
+                    $students[] = $srow;
+                }
+            }
+        } catch (Throwable $se) {
+            $students = [];
+        }
+
         reply([
-            'ok'          => true,
-            'role'        => $role,
-            'tasks'       => $tasks,
-            'submissions' => $submissions,
-            'metrics'     => [
-                'total_students'     => $totalStudents,
-                'active_assignments' => $activeAssignments,
-                'total_submissions'  => $totalSubmissions,
-                'pending_reviews'    => $pendingReviews,
-                'submission_rate'    => $submissionRate,
-                'review_rate'        => $reviewRate,
-                'average_grade'      => $averageGrade,
-                'analytics_bars'     => $analyticsBars,
-            ],
+            'ok'         => true,
+            'role'       => $role,
+            'can_manage' => $isStaff,
+            'classrooms' => $classrooms,
+            'posts'      => $posts,
+            'students'   => $students,
         ]);
     }
 
@@ -296,196 +246,206 @@ try {
 
         $action = (string) ($in['action'] ?? '');
 
-        if ($action === 'create_task') {
-            if (!$isStaff) {
-                reply(['ok' => false, 'message' => 'Only teachers or admins can create tasks.'], 403);
+        if ($action === 'join_class') {
+            if ($role !== 'student') {
+                reply(['ok' => false, 'message' => 'Only students can join classes with a code.'], 403);
             }
 
+            $code = strtoupper(trim((string) ($in['code'] ?? '')));
+            if ($code === '') {
+                reply(['ok' => false, 'message' => 'Please enter a class code.'], 400);
+            }
+
+            $stmt = mysqli_prepare($conn, 'SELECT id, title FROM classrooms WHERE class_code = ? LIMIT 1');
+            mysqli_stmt_bind_param($stmt, 's', $code);
+            mysqli_stmt_execute($stmt);
+            $classroom = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+
+            if (!$classroom) {
+                reply(['ok' => false, 'message' => 'Class code not found.'], 404);
+            }
+
+            $classroomId = (int) $classroom['id'];
+            $check = mysqli_prepare(
+                $conn,
+                'SELECT id FROM classroom_members WHERE classroom_id = ? AND student_id = ? LIMIT 1'
+            );
+            mysqli_stmt_bind_param($check, 'ii', $classroomId, $userId);
+            mysqli_stmt_execute($check);
+            if (mysqli_fetch_assoc(mysqli_stmt_get_result($check))) {
+                reply(['ok' => false, 'message' => 'You have already joined this class.'], 409);
+            }
+
+            $ins = mysqli_prepare(
+                $conn,
+                'INSERT INTO classroom_members (classroom_id, student_id) VALUES (?, ?)'
+            );
+            mysqli_stmt_bind_param($ins, 'ii', $classroomId, $userId);
+            mysqli_stmt_execute($ins);
+
+            write_audit($conn, $userId, 'JOIN', 'classroom', 'CLASS-' . $classroomId, $code);
+            reply(['ok' => true, 'message' => 'Joined ' . $classroom['title'] . '!']);
+        }
+
+        if (!$isStaff) {
+            reply(['ok' => false, 'message' => 'Only teachers or admins can modify classrooms.'], 403);
+        }
+
+        if ($action === 'create_class') {
+            $title   = trim((string) ($in['title'] ?? $in['name'] ?? ''));
+            $section = trim((string) ($in['section'] ?? ''));
+            $subject = trim((string) ($in['subject'] ?? ''));
+
+            if ($title === '') {
+                reply(['ok' => false, 'message' => 'Class name is required.'], 400);
+            }
+            if ($subject === '') {
+                $subject = 'General';
+            }
+
+            $classCode = generate_class_code($conn);
+            $stmt = mysqli_prepare(
+                $conn,
+                'INSERT INTO classrooms (teacher_id, class_code, title, subject, section)
+                 VALUES (?, ?, ?, ?, ?)'
+            );
+            mysqli_stmt_bind_param($stmt, 'issss', $userId, $classCode, $title, $subject, $section);
+            mysqli_stmt_execute($stmt);
+
+            $newId = mysqli_insert_id($conn);
+            write_audit($conn, $userId, 'CREATE', 'classroom', 'CLASS-' . $newId, $classCode . ' - ' . $title);
+            reply([
+                'ok'         => true,
+                'id'         => (int) $newId,
+                'class_code' => $classCode,
+                'message'    => 'Class created! Share code: ' . $classCode,
+            ]);
+        }
+
+        if ($action === 'update_class') {
+            $id      = (int) ($in['id'] ?? 0);
+            $title   = trim((string) ($in['title'] ?? ''));
+            $section = trim((string) ($in['section'] ?? ''));
+            $subject = trim((string) ($in['subject'] ?? ''));
+
+            if ($id <= 0) {
+                reply(['ok' => false, 'message' => 'Invalid class ID.'], 400);
+            }
+            if ($title === '') {
+                reply(['ok' => false, 'message' => 'Class name is required.'], 400);
+            }
+            if ($subject === '') {
+                reply(['ok' => false, 'message' => 'Subject is required.'], 400);
+            }
+
+            if ($isAdmin) {
+                $stmt = mysqli_prepare(
+                    $conn,
+                    'UPDATE classrooms SET title = ?, subject = ?, section = ? WHERE id = ?'
+                );
+                mysqli_stmt_bind_param($stmt, 'sssi', $title, $subject, $section, $id);
+            } else {
+                $stmt = mysqli_prepare(
+                    $conn,
+                    'UPDATE classrooms SET title = ?, subject = ?, section = ? WHERE id = ? AND teacher_id = ?'
+                );
+                mysqli_stmt_bind_param($stmt, 'sssii', $title, $subject, $section, $id, $userId);
+            }
+
+            mysqli_stmt_execute($stmt);
+            write_audit($conn, $userId, 'UPDATE', 'classroom', 'CLASS-' . $id, $title);
+            reply(['ok' => true, 'message' => 'Class updated.']);
+        }
+
+        if ($action === 'delete_class') {
+            $id = (int) ($in['id'] ?? 0);
+            if ($id <= 0) {
+                reply(['ok' => false, 'message' => 'Invalid class ID.'], 400);
+            }
+
+            if ($isAdmin) {
+                $stmt = mysqli_prepare($conn, 'DELETE FROM classrooms WHERE id = ?');
+                mysqli_stmt_bind_param($stmt, 'i', $id);
+            } else {
+                $stmt = mysqli_prepare($conn, 'DELETE FROM classrooms WHERE id = ? AND teacher_id = ?');
+                mysqli_stmt_bind_param($stmt, 'ii', $id, $userId);
+            }
+
+            mysqli_stmt_execute($stmt);
+            if (mysqli_stmt_affected_rows($stmt) === 0) {
+                reply(['ok' => false, 'message' => 'Class not found or not owned by you.'], 404);
+            }
+
+            write_audit($conn, $userId, 'DELETE', 'classroom', 'CLASS-' . $id, 'Class deleted');
+            reply(['ok' => true, 'message' => 'Class deleted.']);
+        }
+
+        if ($action === 'create_post') {
             $classroomId = (int) ($in['classroom_id'] ?? 0);
-            $title       = mb_substr(trim((string) ($in['title'] ?? '')), 0, 150);
-            $description = trim((string) ($in['description'] ?? ''));
-            $dueDate     = clean_date_or_null($in['due_date'] ?? '');
-            $maxScore    = isset($in['max_score']) && $in['max_score'] !== '' ? (float) $in['max_score'] : 100.0;
+            $title       = trim((string) ($in['title'] ?? ''));
+            $content     = trim((string) ($in['content'] ?? ''));
+            $link        = trim((string) ($in['resource_link'] ?? ''));
 
             if ($classroomId <= 0) {
                 reply(['ok' => false, 'message' => 'Please select a class.'], 400);
             }
+            // Only plain web links (the page turns this into a clickable link).
+            if ($link !== '' && (strlen($link) > 255
+                    || !filter_var($link, FILTER_VALIDATE_URL)
+                    || !preg_match('#^https?://#i', $link))) {
+                reply(['ok' => false, 'message' => 'The resource link must be a web address starting with http:// or https://.'], 400);
+            }
+            $link = $link === '' ? null : $link;
             if ($title === '') {
-                reply(['ok' => false, 'message' => 'Task title is required.'], 400);
+                reply(['ok' => false, 'message' => 'Post title is required.'], 400);
             }
-            if ($description === '') {
-                reply(['ok' => false, 'message' => 'Task instructions are required.'], 400);
-            }
-            if ($dueDate === false) {
-                reply(['ok' => false, 'message' => 'Due date must be YYYY-MM-DD.'], 400);
-            }
-            if ($maxScore <= 0 || $maxScore > 1000) {
-                reply(['ok' => false, 'message' => 'Max score must be between 1 and 1000.'], 400);
+            if ($content === '') {
+                reply(['ok' => false, 'message' => 'Post content is required.'], 400);
             }
 
-            if (!in_array($role, ['admin', 'super_admin'], true)) {
-                $ownRows = fetch_all_rows(
-                    $conn,
-                    'SELECT id FROM classrooms WHERE id = ? AND teacher_id = ? LIMIT 1',
-                    'ii',
-                    [$classroomId, $userId]
-                );
-                if (empty($ownRows)) {
-                    reply(['ok' => false, 'message' => 'You can only assign tasks to your own classes.'], 403);
+            if (!$isAdmin) {
+                $own = mysqli_prepare($conn, 'SELECT id FROM classrooms WHERE id = ? AND teacher_id = ? LIMIT 1');
+                mysqli_stmt_bind_param($own, 'ii', $classroomId, $userId);
+                mysqli_stmt_execute($own);
+                if (!mysqli_fetch_assoc(mysqli_stmt_get_result($own))) {
+                    reply(['ok' => false, 'message' => 'You can only post in your own classes.'], 403);
                 }
             }
 
-            $ins = run_exec(
+            $stmt = mysqli_prepare(
                 $conn,
-                'INSERT INTO classroom_tasks (classroom_id, teacher_id, title, description, due_date, max_score)
-                 VALUES (?, ?, ?, ?, ?, ?)',
-                'iisssd',
-                [$classroomId, $userId, $title, $description, $dueDate, $maxScore]
+                'INSERT INTO classroom_posts (classroom_id, author_id, title, content, resource_link)
+                 VALUES (?, ?, ?, ?, ?)'
             );
+            mysqli_stmt_bind_param($stmt, 'iisss', $classroomId, $userId, $title, $content, $link);
+            mysqli_stmt_execute($stmt);
 
-            $newId = (int) $ins['insert_id'];
-            write_audit($conn, $userId, 'CREATE', 'classroom_task', 'CTASK-' . $newId, $title);
-            reply(['ok' => true, 'id' => $newId, 'message' => 'Classroom task assigned!']);
+            $newId = mysqli_insert_id($conn);
+            write_audit($conn, $userId, 'CREATE', 'classroom_post', 'POST-' . $newId, $title);
+            reply(['ok' => true, 'id' => (int) $newId, 'message' => 'Announcement posted!']);
         }
 
-        if ($action === 'delete_task') {
-            if (!$isStaff) {
-                reply(['ok' => false, 'message' => 'Only teachers or admins can delete tasks.'], 403);
+        if ($action === 'delete_post') {
+            $id = (int) ($in['id'] ?? 0);
+            if ($id <= 0) {
+                reply(['ok' => false, 'message' => 'Invalid post ID.'], 400);
             }
 
-            $taskId = (int) ($in['id'] ?? 0);
-            if ($taskId <= 0) {
-                reply(['ok' => false, 'message' => 'Invalid task ID.'], 400);
-            }
-
-            if (in_array($role, ['admin', 'super_admin'], true)) {
-                $del = run_exec($conn, 'DELETE FROM classroom_tasks WHERE id = ?', 'i', [$taskId]);
+            if ($isAdmin) {
+                $stmt = mysqli_prepare($conn, 'DELETE FROM classroom_posts WHERE id = ?');
+                mysqli_stmt_bind_param($stmt, 'i', $id);
             } else {
-                $del = run_exec(
-                    $conn,
-                    'DELETE ct FROM classroom_tasks ct
-                     INNER JOIN classrooms c ON c.id = ct.classroom_id
-                     WHERE ct.id = ? AND c.teacher_id = ?',
-                    'ii',
-                    [$taskId, $userId]
-                );
+                $stmt = mysqli_prepare($conn, 'DELETE FROM classroom_posts WHERE id = ? AND author_id = ?');
+                mysqli_stmt_bind_param($stmt, 'ii', $id, $userId);
             }
 
-            if ($del['affected_rows'] === 0) {
-                reply(['ok' => false, 'message' => 'Task not found or not owned by you.'], 404);
+            mysqli_stmt_execute($stmt);
+            if (mysqli_stmt_affected_rows($stmt) === 0) {
+                reply(['ok' => false, 'message' => 'Post not found or not owned by you.'], 404);
             }
 
-            write_audit($conn, $userId, 'DELETE', 'classroom_task', 'CTASK-' . $taskId, 'Classroom task deleted');
-            reply(['ok' => true, 'message' => 'Task deleted.']);
-        }
-
-        if ($action === 'submit_task') {
-            if ($role !== 'student') {
-                reply(['ok' => false, 'message' => 'Only students can submit classroom tasks.'], 403);
-            }
-
-            $taskId         = (int) ($in['task_id'] ?? 0);
-            $submissionText = trim((string) ($in['submission_text'] ?? ''));
-
-            if ($taskId <= 0) {
-                reply(['ok' => false, 'message' => 'Invalid task ID.'], 400);
-            }
-            if ($submissionText === '') {
-                reply(['ok' => false, 'message' => 'Please enter your answer or submission link/notes.'], 400);
-            }
-
-            $chkRows = fetch_all_rows(
-                $conn,
-                'SELECT ct.id
-                 FROM classroom_tasks ct
-                 INNER JOIN classroom_members cm ON cm.classroom_id = ct.classroom_id
-                 WHERE ct.id = ? AND cm.student_id = ?
-                 LIMIT 1',
-                'ii',
-                [$taskId, $userId]
-            );
-            if (empty($chkRows)) {
-                reply(['ok' => false, 'message' => 'Task not found in your enrolled classes.'], 404);
-            }
-
-            run_exec(
-                $conn,
-                'INSERT INTO classroom_submissions (task_id, student_id, submission_text, status, submitted_at)
-                 VALUES (?, ?, ?, \'submitted\', NOW())
-                 ON DUPLICATE KEY UPDATE
-                   submission_text = VALUES(submission_text),
-                   status = \'submitted\',
-                   submitted_at = NOW()',
-                'iis',
-                [$taskId, $userId, $submissionText]
-            );
-
-            write_audit($conn, $userId, 'SUBMIT', 'classroom_task', 'CTASK-' . $taskId, 'Submitted work');
-            reply(['ok' => true, 'message' => 'Submission saved!']);
-        }
-
-        if ($action === 'grade_submission') {
-            if (!$isStaff) {
-                reply(['ok' => false, 'message' => 'Only teachers or admins can grade submissions.'], 403);
-            }
-
-            $submissionId = (int) ($in['submission_id'] ?? 0);
-            $feedback     = trim((string) ($in['feedback'] ?? ''));
-
-            if ($submissionId <= 0) {
-                reply(['ok' => false, 'message' => 'Invalid submission ID.'], 400);
-            }
-            if (!isset($in['score']) || $in['score'] === '' || !is_numeric($in['score'])) {
-                reply(['ok' => false, 'message' => 'Please enter a valid numeric score.'], 400);
-            }
-
-            $score = (float) $in['score'];
-
-            if (in_array($role, ['admin', 'super_admin'], true)) {
-                $subRows = fetch_all_rows(
-                    $conn,
-                    'SELECT cs.id, ct.max_score
-                     FROM classroom_submissions cs
-                     INNER JOIN classroom_tasks ct ON ct.id = cs.task_id
-                     WHERE cs.id = ?
-                     LIMIT 1',
-                    'i',
-                    [$submissionId]
-                );
-            } else {
-                $subRows = fetch_all_rows(
-                    $conn,
-                    'SELECT cs.id, ct.max_score
-                     FROM classroom_submissions cs
-                     INNER JOIN classroom_tasks ct ON ct.id = cs.task_id
-                     INNER JOIN classrooms c ON c.id = ct.classroom_id
-                     WHERE cs.id = ? AND c.teacher_id = ?
-                     LIMIT 1',
-                    'ii',
-                    [$submissionId, $userId]
-                );
-            }
-
-            if (empty($subRows)) {
-                reply(['ok' => false, 'message' => 'Submission not found or not in your class.'], 404);
-            }
-
-            $maxScore = (float) ($subRows[0]['max_score'] ?? 100.0);
-            if ($score < 0 || $score > $maxScore) {
-                reply(['ok' => false, 'message' => 'Score must be between 0 and ' . $maxScore . '.'], 400);
-            }
-
-            run_exec(
-                $conn,
-                'UPDATE classroom_submissions
-                 SET score = ?, feedback = ?, status = \'graded\', graded_at = NOW(), graded_by = ?
-                 WHERE id = ?',
-                'dsii',
-                [$score, $feedback, $userId, $submissionId]
-            );
-
-            write_audit($conn, $userId, 'GRADE', 'classroom_submission', 'CSUB-' . $submissionId, 'Score: ' . $score);
-            reply(['ok' => true, 'message' => 'Grade and feedback saved!']);
+            write_audit($conn, $userId, 'DELETE', 'classroom_post', 'POST-' . $id, 'Post deleted');
+            reply(['ok' => true, 'message' => 'Post deleted.']);
         }
 
         reply(['ok' => false, 'message' => 'Unknown action.'], 400);
@@ -494,6 +454,6 @@ try {
     reply(['ok' => false, 'message' => 'Method not allowed.'], 405);
 
 } catch (Throwable $e) {
-    error_log('api/classroom_tasks.php error: ' . $e->getMessage());
+    error_log('api/classroom.php error: ' . $e->getMessage());
     reply(['ok' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
 }

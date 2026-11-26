@@ -50,14 +50,90 @@ function write_audit($conn, $userId, $action, $entityType, $entityId, $details =
     mysqli_stmt_execute($stmt);
 }
 
-// ---------- Check the request ----------
-
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    reply(['ok' => false, 'message' => 'Use POST.'], 405);
+// Escape % and _ so they are matched literally inside LIKE.
+function like_escape($value)
+{
+    return addcslashes($value, '%_\\');
 }
+
+// Search this user's tasks in the database.
+// Every word typed must appear in the title, subject, description, tags,
+// priority, status, due date or id. Best matches first (title start > title
+// word > title anywhere > subject > anything else), then by due date.
+// Returns ['ids' => [...active task ids, best first], 'archived' => count].
+function search_tasks($conn, $userId, $query)
+{
+    $query  = str_replace(['-', '_'], ' ', $query);
+    $tokens = array_slice(preg_split('/\s+/u', trim($query), -1, PREG_SPLIT_NO_EMPTY), 0, 8);
+    if (!$tokens) {
+        return ['ids' => [], 'archived' => 0];
+    }
+
+    $scoreParts = [];
+    $scoreParams = [];
+    $where = ['user_id = ?'];
+    $whereParams = [$userId];
+
+    foreach ($tokens as $token) {
+        $safe = like_escape($token);
+        $anywhere = '%' . $safe . '%';
+
+        $scoreParts[] = 'CASE WHEN title LIKE ? THEN 100 WHEN title LIKE ? THEN 80
+                              WHEN title LIKE ? THEN 60 WHEN subject LIKE ? THEN 30 ELSE 10 END';
+        array_push($scoreParams, $safe . '%', '% ' . $safe . '%', $anywhere, $anywhere);
+
+        $where[] = "(title LIKE ? OR subject LIKE ? OR description LIKE ? OR tags LIKE ?
+                     OR priority LIKE ? OR status LIKE ? OR CAST(due_date AS CHAR) LIKE ?
+                     OR CONCAT('TASK ', id) LIKE ?)";
+        array_push($whereParams, ...array_fill(0, 8, $anywhere));
+    }
+
+    $sql = 'SELECT id, status, (' . implode(' + ', $scoreParts) . ') AS score
+            FROM tasks
+            WHERE ' . implode(' AND ', $where) . '
+            ORDER BY score DESC, due_date IS NULL, due_date ASC, id ASC
+            LIMIT 500';
+
+    $params = array_merge($scoreParams, $whereParams);
+    $types  = str_repeat('s', count($scoreParams)) . 'i' . str_repeat('s', count($whereParams) - 1);
+
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, $types, ...$params);
+    mysqli_stmt_execute($stmt);
+    $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+
+    $ids = [];
+    $archived = 0;
+    foreach ($rows as $row) {
+        if ($row['status'] === 'Archived') {
+            $archived++;
+        } else {
+            $ids[] = 'TASK-' . $row['id'];
+        }
+    }
+    return ['ids' => $ids, 'archived' => $archived];
+}
+
+// ---------- Check the request ----------
 
 $user = api_user();   // 401 if signed out, 403 if a password change is required
 $userId = (int) $user['id'];
+
+// ---------- SEARCH tasks (GET api/tasks.php?q=...) ----------
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $q = mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 100);
+    try {
+        $found = search_tasks($conn, $userId, $q);
+    } catch (Throwable $e) {
+        error_log('api/tasks.php search: ' . $e->getMessage());
+        reply(['ok' => false, 'message' => 'Search failed.'], 500);
+    }
+    reply(['ok' => true, 'query' => $q, 'ids' => $found['ids'], 'archived' => $found['archived']]);
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    reply(['ok' => false, 'message' => 'Use GET to search or POST to save.'], 405);
+}
 
 $input = json_decode(file_get_contents('php://input'), true);
 if (!is_array($input)) {

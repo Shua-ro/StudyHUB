@@ -1330,8 +1330,70 @@ function taskSearchScore(task, tokens) {
   return score;
 }
 
+/* Database search (GET api/tasks.php?q=...).
+   The last answer is kept here. While the database is still answering a
+   new query, the in-browser match above is used so typing stays instant. */
+const dbTaskSearch = {
+  query: null,       // the query this answer belongs to
+  order: new Map(),  // task id -> rank (0 = best match)
+  archived: 0,       // matching tasks that are in Archives
+  pending: null,     // query being fetched right now
+  timer: null,
+  seq: 0,
+};
+
+function dbSearchReady(query) {
+  return dbTaskSearch.query !== null && dbTaskSearch.query === query.trim();
+}
+
+function forgetDbSearch() {
+  dbTaskSearch.query = null;
+  dbTaskSearch.order = new Map();
+  dbTaskSearch.archived = 0;
+}
+
+/* Ask the database which tasks match. Calls onDone() when the answer arrives
+   (only if it is still the latest request). */
+async function fetchDbSearch(query, onDone) {
+  const q = query.trim();
+  if (!q) {
+    forgetDbSearch();
+    onDone?.();
+    return;
+  }
+  if (dbSearchReady(q) || dbTaskSearch.pending === q) return;
+
+  const seq = ++dbTaskSearch.seq;
+  dbTaskSearch.pending = q;
+  try {
+    const response = await fetch(`api/tasks.php?q=${encodeURIComponent(q)}`, {
+      credentials: "same-origin",
+    });
+    const data = await response.json();
+    if (seq !== dbTaskSearch.seq) return;   // a newer search was started
+    if (!data.ok) throw new Error(data.message || "Search failed.");
+    dbTaskSearch.query = q;
+    dbTaskSearch.order = new Map(data.ids.map((id, rank) => [id, rank]));
+    dbTaskSearch.archived = Number(data.archived) || 0;
+    onDone?.();
+  } catch (error) {
+    console.warn("[search] database search failed, using local match:", error);
+  } finally {
+    if (seq === dbTaskSearch.seq) dbTaskSearch.pending = null;
+  }
+}
+
+/* Debounced: wait until the person pauses typing. */
+function scheduleDbSearch(query, onDone) {
+  clearTimeout(dbTaskSearch.timer);
+  dbTaskSearch.timer = setTimeout(() => fetchDbSearch(query, onDone), 200);
+}
+
 function matchesQuery(task) {
-  return taskSearchScore(task, searchTokens(state.query)) >= 0;
+  const q = state.query.trim();
+  if (!q) return true;
+  if (dbSearchReady(q)) return dbTaskSearch.order.has(task.id);
+  return taskSearchScore(task, searchTokens(q)) >= 0;
 }
 
 function matchesFilters(task) {
@@ -2233,6 +2295,7 @@ async function deleteArchivedTask(id) {
     (record) => record.id !== id,
   );
   archiveDeleteId = null;
+  refreshDbSearchAfterChange();
   logAudit("DELETE", id, `Deleted archived task: ${task.title}`);
   render();
   setArchiveStatus(`Deleted “${task.title}”.`);
@@ -2497,11 +2560,21 @@ async function saveToServer(payload) {
     });
     const data = await response.json();
     if (!data.ok) throw new Error(data.message || "Save failed.");
+    refreshDbSearchAfterChange();
     return data;
   } catch (error) {
     showMessage(`Could not save to the database: ${error.message}`);
     return null;
   }
+}
+
+/* A task changed in the database, so the last search answer may be out of date. */
+function refreshDbSearchAfterChange() {
+  forgetDbSearch();
+  dbTaskSearch.seq++;   // ignore any answer already on its way
+  dbTaskSearch.pending = null;
+  const q = state.query.trim() || searchInput?.value.trim() || "";
+  if (q) fetchDbSearch(q, () => render());
 }
 
 /* Send a schedule change to the database (api/schedules.php).
@@ -3763,20 +3836,31 @@ function renderSearchDropdown() {
   }
 
   const tokens = searchTokens(rawQuery);
+  const fromDb = dbSearchReady(rawQuery);
 
-  searchHits = state.records
-    .map((task) => ({ task, score: taskSearchScore(task, tokens) }))
-    .filter((hit) => hit.score >= 0)
-    .sort(
-      (a, b) =>
-        b.score - a.score || String(a.task.dueDate).localeCompare(String(b.task.dueDate)),
-    )
-    .map((hit) => hit.task);
+  if (fromDb) {
+    // Results (and their order) come from the database.
+    searchHits = state.records
+      .filter((task) => dbTaskSearch.order.has(task.id))
+      .sort((a, b) => dbTaskSearch.order.get(a.id) - dbTaskSearch.order.get(b.id));
+  } else {
+    // Database answer not here yet: show a local preview meanwhile.
+    searchHits = state.records
+      .map((task) => ({ task, score: taskSearchScore(task, tokens) }))
+      .filter((hit) => hit.score >= 0)
+      .sort(
+        (a, b) =>
+          b.score - a.score || String(a.task.dueDate).localeCompare(String(b.task.dueDate)),
+      )
+      .map((hit) => hit.task);
+  }
 
   if (!searchHits.length) {
-    const archivedMatches = (state.archivedRecords || []).filter(
-      (task) => taskSearchScore(task, tokens) >= 0,
-    ).length;
+    const archivedMatches = fromDb
+      ? dbTaskSearch.archived
+      : (state.archivedRecords || []).filter(
+          (task) => taskSearchScore(task, tokens) >= 0,
+        ).length;
 
     searchResults.innerHTML = `
       <div class="search-empty" role="option" aria-selected="false">
@@ -3866,6 +3950,12 @@ function showAllSearchResults() {
 if (searchInput && searchResults) {
   searchInput.addEventListener("input", () => {
     renderSearchDropdown();
+
+    // Ask the database; when it answers, redraw with its results.
+    scheduleDbSearch(searchInput.value, () => {
+      if (document.activeElement === searchInput) renderSearchDropdown();
+      if (state.query.trim()) render();
+    });
 
     // If the Tasks list is already on screen, filter it as the person types.
     const tasksVisible = !document.querySelector("#tasks")?.hidden;
