@@ -1,3 +1,7 @@
+// js/classroom_tasks.js
+// Class tasks and submissions: teacher Dashboard numbers, Students, Submissions,
+// Feedback & Grades, Class Analytics, and the student Classroom task list.
+// (The teacher Classroom page itself lives in js/teacher_classroom.js.)
 (function () {
   var API_URL = "api/classroom_tasks.php";
 
@@ -284,7 +288,7 @@
   }
 
   function updateCardHighlights() {
-    var cards = document.querySelectorAll("#teacher-classroom .content-card, #student-classroom .content-card");
+    var cards = document.querySelectorAll("#student-classroom .content-card");
     for (var i = 0; i < cards.length; i++) {
       var card = cards[i];
       var cid = card.dataset.ctaskClassId;
@@ -320,11 +324,10 @@
   }
 
   function bindClassCards() {
-    var cards = document.querySelectorAll("#teacher-classroom .content-card, #student-classroom .content-card");
+    var cards = document.querySelectorAll("#student-classroom .content-card");
     for (var i = 0; i < cards.length; i++) {
       var card = cards[i];
       if (card.dataset.ctaskBound === "1") continue;
-      if (card.id === "teacher-ctask-form") continue;
 
       var text = card.textContent || "";
       var match = text.match(/(?:Class code|Code):\s*([A-Z0-9-]+)/i);
@@ -419,85 +422,6 @@
     }
   }
 
-  function ensureTeacherTaskUI() {
-    var teacherSection = byId("teacher-classroom");
-    if (!teacherSection) return null;
-
-    var container = byId("teacher-ctask-workspace");
-    if (!container) {
-      container = document.createElement("div");
-      container.id = "teacher-ctask-workspace";
-      container.style.marginTop = "1.25rem";
-      container.innerHTML = [
-        '<form id="teacher-ctask-form" class="content-card classroom-form">',
-        "  <h3>Assign Classroom Task</h3>",
-        "  <div>",
-        '    <label for="ctask-classroom-id">Select class</label>',
-        '    <select id="ctask-classroom-id" required></select>',
-        "  </div>",
-        "  <div>",
-        '    <label for="ctask-title">Task title</label>',
-        '    <input id="ctask-title" maxlength="150" required placeholder="e.g. Lab Exercise 3: Circuit Analysis" />',
-        "  </div>",
-        "  <div>",
-        '    <label for="ctask-due-date">Due date (optional)</label>',
-        '    <input id="ctask-due-date" type="date" />',
-        "  </div>",
-        "  <div>",
-        '    <label for="ctask-max-score">Max score</label>',
-        '    <input id="ctask-max-score" type="number" min="1" max="1000" step="1" value="100" required />',
-        "  </div>",
-        "  <div>",
-        '    <label for="ctask-description">Instructions</label>',
-        '    <textarea id="ctask-description" rows="3" required placeholder="Describe what students need to submit..."></textarea>',
-        "  </div>",
-        '  <button type="submit" class="classroom-button classroom-primary">Assign Task</button>',
-        "</form>",
-        '<div id="teacher-ctask-list" style="margin-top: 1rem;"></div>'
-      ].join("\n");
-
-      teacherSection.appendChild(container);
-
-      var form = byId("teacher-ctask-form");
-      if (form) {
-        form.addEventListener("submit", function (e) {
-          e.preventDefault();
-          var notice = byId("classroom-notice");
-          var classId = Number((byId("ctask-classroom-id") || {}).value || 0);
-          var title = ((byId("ctask-title") || {}).value || "").trim();
-          var dueDate = ((byId("ctask-due-date") || {}).value || "").trim();
-          var maxScore = ((byId("ctask-max-score") || {}).value || "100").trim();
-          var description = ((byId("ctask-description") || {}).value || "").trim();
-
-          postTaskAction({
-            action: "create_task",
-            classroom_id: classId,
-            title: title,
-            due_date: dueDate,
-            max_score: maxScore,
-            description: description
-          })
-            .then(function (data) {
-              form.reset();
-              var maxInput = byId("ctask-max-score");
-              if (maxInput) maxInput.value = "100";
-              syncAllClassSelects();
-              showNotice(notice, data.message || "Classroom task assigned!", false);
-              return loadClassroomTasks();
-            })
-            .catch(function (err) {
-              showNotice(notice, err.message, true);
-            });
-        });
-      }
-    }
-
-    renderWorkspaceBanner(container, true);
-    syncAllClassSelects();
-    bindClassCards();
-    return container;
-  }
-
   function handleGradeSubmission(submissionId) {
     var sub = null;
     for (var i = 0; i < taskState.submissions.length; i++) {
@@ -544,29 +468,6 @@
           .then(function (data) {
             closeModal();
             showNotice(notice, data.message || "Grade saved!", false);
-            return loadClassroomTasks();
-          })
-          .catch(function (err) {
-            setModalError(err.message);
-          });
-      }
-    });
-  }
-
-  function handleDeleteTask(taskId, taskTitle) {
-    var notice = byId("classroom-notice");
-    openModal({
-      title: "Delete Classroom Task",
-      subtitle: taskTitle || "Confirm deletion",
-      saveLabel: "Delete Task",
-      danger: true,
-      bodyHtml:
-        '<p style="margin:0;">Are you sure you want to delete this task and all student submissions attached to it? This cannot be undone.</p>',
-      onSave: function () {
-        postTaskAction({ action: "delete_task", id: Number(taskId) })
-          .then(function (data) {
-            closeModal();
-            showNotice(notice, data.message || "Task deleted.", false);
             return loadClassroomTasks();
           })
           .catch(function (err) {
@@ -720,8 +621,6 @@
   }
 
   function renderTeacherTaskSections() {
-    ensureTeacherTaskUI();
-
     var m = taskState.metrics || {};
     var setText = function (id, val) {
       var el = byId(id);
@@ -735,67 +634,6 @@
     setText("teacher-submission-rate", m.submission_rate || "0%");
     setText("teacher-review-rate", m.review_rate || "0%");
     setText("teacher-average-grade", m.average_grade || "—");
-
-    var listEl = byId("teacher-ctask-list");
-    if (listEl) {
-      var visibleTasks = getFilteredTasks();
-      var selectedCls = taskState.selectedClassId ? findClassById(taskState.selectedClassId) : null;
-      var headingSuffix = selectedCls ? " — " + escapeHtml(selectedCls.title) : "";
-
-      if (!visibleTasks.length) {
-        listEl.innerHTML =
-          "<h3>Assigned Tasks" +
-          headingSuffix +
-          '</h3><p class="section-note">No classroom tasks assigned for this view yet.</p>';
-      } else {
-        var cards = visibleTasks.map(function (t) {
-          var subCount = 0;
-          for (var s = 0; s < taskState.submissions.length; s++) {
-            if (Number(taskState.submissions[s].task_id) === Number(t.id)) subCount++;
-          }
-          var totalInClass = Number(t.class_student_count || 0);
-          var turnInPill =
-            '<span class="ctask-pill ctask-pill--green">' +
-            subCount +
-            "/" +
-            totalInClass +
-            " turned in</span>";
-
-          return [
-            '<article class="content-card" style="margin-top:0.75rem;">',
-            '  <div style="display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;margin-bottom:0.4rem;">',
-            '    <span class="ctask-pill">' +
-              escapeHtml(t.class_code) +
-              " • " +
-              escapeHtml(t.classroom_title) +
-              "</span>",
-            "    " + duePillHtml(t.due_date, false),
-            '    <span class="ctask-pill ctask-pill--muted">' + escapeHtml(t.max_score) + " pts</span>",
-            "    " + turnInPill,
-            "  </div>",
-            '  <h4 style="margin:0.25rem 0;">' + escapeHtml(t.title) + "</h4>",
-            '  <p style="margin:0.35rem 0 0.75rem 0;">' + escapeHtml(t.description) + "</p>",
-            '  <button type="button" class="classroom-button" data-delete-ctask="' +
-              escapeHtml(t.id) +
-              '" data-delete-title="' +
-              escapeHtml(t.title) +
-              '">Delete Task</button>',
-            "</article>"
-          ].join("\n");
-        });
-        listEl.innerHTML = "<h3>Assigned Tasks" + headingSuffix + "</h3>" + cards.join("");
-
-        var delBtns = listEl.querySelectorAll("[data-delete-ctask]");
-        for (var i = 0; i < delBtns.length; i++) {
-          delBtns[i].addEventListener("click", function () {
-            handleDeleteTask(
-              Number(this.getAttribute("data-delete-ctask")),
-              this.getAttribute("data-delete-title") || ""
-            );
-          });
-        }
-      }
-    }
 
     var recentEl = byId("teacher-recent-submissions");
     if (recentEl) {
@@ -1176,9 +1014,19 @@
       });
   }
 
+  // Used by js/teacher_classroom.js: refresh after it changes tasks, and open
+  // the Submissions page already filtered to one class.
+  window.classroomTasks = {
+    reload: loadClassroomTasks,
+    showSubmissions: function (classId) {
+      taskState.subClassFilter = classId ? String(classId) : "";
+      taskState.subStatusFilter = "";
+      renderTeacherTaskSections();
+    }
+  };
+
   document.addEventListener("DOMContentLoaded", function () {
     injectStyles();
-    ensureTeacherTaskUI();
     loadClassroomTasks();
     setTimeout(function () {
       syncAllClassSelects();

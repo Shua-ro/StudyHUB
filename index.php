@@ -19,6 +19,15 @@ $auditLog = get_audit_for_user($conn, (int) $currentUser['id']);
 $preferences = get_preferences_for_user($conn, (int) $currentUser['id']);
 $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUser['id']);
 $announcements = get_active_announcements($conn, $currentUser['role']);
+
+// "css/style.css" -> "css/style.css?v=1732612345" (the file's last change time).
+// The browser re-downloads a CSS/JS file as soon as it changes, instead of
+// running a stale cached copy against new page markup.
+function asset(string $path): string
+{
+    $file = __DIR__ . '/' . $path;
+    return htmlspecialchars($path . (is_file($file) ? '?v=' . filemtime($file) : ''), ENT_QUOTES);
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -33,7 +42,7 @@ $announcements = get_active_announcements($conn, $currentUser['role']);
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
     />
-    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="<?= asset('css/style.css') ?>" />
     <script>
       /* Apply the saved theme before first paint to avoid a flash. */
       (function () {
@@ -84,6 +93,11 @@ $announcements = get_active_announcements($conn, $currentUser['role']);
         <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
         <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12"/></symbol>
         <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+        <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+        <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></symbol>
+        <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
       </defs>
     </svg>
 
@@ -778,69 +792,75 @@ $announcements = get_active_announcements($conn, $currentUser['role']);
           <div id="teacher-analytics-bars" class="distribution-bars"></div>
         </div>
       </section>
-      <section id="teacher-classroom" data-view="teacher" hidden>
-        <div class="classroom-heading">
-          <div>
-            <h2>Classroom</h2>
-            <p class="section-note">
-              Create classes and share their codes with students.
-            </p>
+      <!-- Teacher Classroom. Two views, driven by js/teacher_classroom.js:
+           1. the class list (search + cards), 2. one class (Stream / Classwork / People). -->
+      <section id="teacher-classroom" data-view="teacher" aria-labelledby="tc-title" hidden>
+        <div id="tc-list-view">
+          <div class="classroom-heading">
+            <div>
+              <h2 id="tc-title">Classroom</h2>
+              <p class="section-note">Open a class to post updates, assign work and see who joined.</p>
+            </div>
+            <button type="button" class="btn-primary" id="tc-create-btn">
+              <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>Create class
+            </button>
           </div>
-          <button
-            type="button"
-            class="classroom-button classroom-primary"
-            id="class-create-toggle"
-          >
-            + Create class
-          </button>
+
+          <div class="tc-toolbar" role="search">
+            <label for="tc-search" class="sr-only">Search classes</label>
+            <div class="tc-search">
+              <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+              <input id="tc-search" type="search" autocomplete="off"
+                     placeholder="Search by class name, code, subject or section" />
+            </div>
+            <p id="tc-count" class="section-note" aria-live="polite"></p>
+          </div>
+
+          <div id="tc-class-grid" class="tc-grid" aria-busy="true"></div>
         </div>
-        <div
-          id="classroom-notice"
-          class="classroom-notice"
-          role="status"
-          aria-live="polite"
-          hidden
-        ></div>
-        <form id="class-create-form" class="content-card classroom-form" hidden>
-          <div>
-            <label for="class-name">Class name</label
-            ><input
-              id="class-name"
-              name="name"
-              maxlength="100"
-              required
-              placeholder="e.g. Data Structures"
-            />
+
+        <div id="tc-detail-view" hidden>
+          <nav class="tc-breadcrumb" aria-label="Breadcrumb">
+            <button type="button" class="tc-back" data-tc-back>
+              <svg class="icon" aria-hidden="true"><use href="#i-arrow-left" /></svg>All classes
+            </button>
+            <span class="tc-crumb-sep" aria-hidden="true">/</span>
+            <span id="tc-crumb-current" aria-current="page"></span>
+          </nav>
+
+          <header id="tc-banner" class="tc-banner"></header>
+
+          <div class="log-tabs tc-tabs" role="tablist" aria-label="Class sections">
+            <button type="button" role="tab" id="tc-tab-stream" aria-controls="tc-panel-stream" aria-selected="true" data-tc-tab="stream">Stream</button>
+            <button type="button" role="tab" id="tc-tab-classwork" aria-controls="tc-panel-classwork" aria-selected="false" tabindex="-1" data-tc-tab="classwork">Classwork <span class="tc-tab-count" id="tc-count-classwork"></span></button>
+            <button type="button" role="tab" id="tc-tab-people" aria-controls="tc-panel-people" aria-selected="false" tabindex="-1" data-tc-tab="people">People <span class="tc-tab-count" id="tc-count-people"></span></button>
           </div>
-          <div>
-            <label for="class-section">Section</label
-            ><input
-              id="class-section"
-              name="section"
-              maxlength="60"
-              placeholder="e.g. Section A"
-            />
-          </div>
-          <div>
-            <label for="class-subject">Subject</label
-            ><input
-              id="class-subject"
-              name="subject"
-              maxlength="100"
-              placeholder="e.g. CMPE 201"
-            />
-          </div>
-          <button type="submit">Create class</button>
-          <button
-            type="button"
-            class="classroom-button"
-            id="class-create-cancel"
-          >
-            Cancel
-          </button>
-        </form>
-        <div id="teacher-class-cards" class="classroom-grid"></div>
-        <div id="teacher-class-detail" class="classroom-detail" hidden></div>
+
+          <div id="tc-panel-stream" class="tc-panel" role="tabpanel" aria-labelledby="tc-tab-stream" tabindex="0"></div>
+          <div id="tc-panel-classwork" class="tc-panel" role="tabpanel" aria-labelledby="tc-tab-classwork" tabindex="0" hidden></div>
+          <div id="tc-panel-people" class="tc-panel" role="tabpanel" aria-labelledby="tc-tab-people" tabindex="0" hidden></div>
+        </div>
+
+        <!-- Create / edit class, and delete confirmations. -->
+        <dialog id="tc-dialog" class="admin-dialog tc-dialog" aria-labelledby="tc-dialog-title">
+          <form id="tc-dialog-form" class="dialog-body" method="dialog" novalidate>
+            <div class="dialog-header">
+              <div>
+                <h3 id="tc-dialog-title"></h3>
+                <p id="tc-dialog-sub" class="section-note"></p>
+              </div>
+              <button type="button" class="tc-icon-btn" data-tc-dialog-close aria-label="Close">
+                <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
+              </button>
+            </div>
+            <div id="tc-dialog-fields" class="tc-form-grid"></div>
+            <p id="tc-dialog-error" class="form-message is-error" role="alert" hidden></p>
+            <div class="tc-form-actions">
+              <button type="button" class="btn" data-tc-dialog-close>Cancel</button>
+              <button type="submit" id="tc-dialog-save">Save</button>
+            </div>
+          </form>
+        </dialog>
       </section>
       <section id="student-classroom" data-view="student" hidden>
         <div class="classroom-heading">
@@ -1917,10 +1937,11 @@ $announcements = get_active_announcements($conn, $currentUser['role']);
       /* Live announcements for this user's role (Admin > Settings). */
       window.STUDYHUB_ANNOUNCEMENTS = <?= json_encode($announcements, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
-    <script src="js/auth.js" defer></script>
-    <script src="js/app.js" defer></script>
-    <script src="js/classroom.js" defer></script>
-    <script src="js/classroom_tasks.js" defer></script>
-    <script src="js/pomodoro.js" defer></script>
+    <script src="<?= asset('js/auth.js') ?>" defer></script>
+    <script src="<?= asset('js/app.js') ?>" defer></script>
+    <script src="<?= asset('js/classroom.js') ?>" defer></script>
+    <script src="<?= asset('js/teacher_classroom.js') ?>" defer></script>
+    <script src="<?= asset('js/classroom_tasks.js') ?>" defer></script>
+    <script src="<?= asset('js/pomodoro.js') ?>" defer></script>
   </body>
 </html>

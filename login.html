@@ -54,9 +54,68 @@
         <p class="auth-footer">&copy; StudyHub</p>
       </section>
 
+      <!-- Decorative product preview (hidden from screen readers; the form is the page). -->
       <aside class="visual-panel" aria-hidden="true">
-        <h2 class="visual-headline">Study smarter,<br /><span>not harder.</span></h2>
-        <p class="visual-caption">Tasks, schedules, notes and a focus timer in one place.</p>
+        <div class="visual-top">
+          <span class="visual-kicker"><i class="dot"></i>For students &amp; teachers</span>
+          <h2 class="visual-headline">Study smarter,<br /><span>not harder.</span></h2>
+          <p class="visual-lead">Plan your tasks, protect your focus time and keep up with every class, all in one calm place.</p>
+        </div>
+
+        <div class="preview-stage">
+          <!-- Main card: today's tasks -->
+          <div class="pv-card pv-today">
+            <div class="pv-today-head">
+              <div>
+                <strong>Today</strong>
+                <small>3 tasks · 1 due soon</small>
+              </div>
+              <div class="pv-progress"><span style="--p: 67%"></span><b>67%</b></div>
+            </div>
+            <ul class="pv-tasks">
+              <li class="is-done">
+                <i class="pv-check"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10" /></svg></i>
+                <div><b>Ethics reflection paper</b><small>IT Ethics</small></div>
+                <em class="pv-pill pv-pill--done">Done</em>
+              </li>
+              <li>
+                <i class="pv-check"></i>
+                <div><b>Normalize tables to 3NF</b><small>Database Systems</small></div>
+                <em class="pv-pill pv-pill--progress">In progress</em>
+              </li>
+              <li>
+                <i class="pv-check"></i>
+                <div><b>Build login page</b><small>Web Development · due tomorrow</small></div>
+                <em class="pv-pill pv-pill--todo">To do</em>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Floating: focus timer -->
+          <div class="pv-card pv-float pv-timer">
+            <div class="pv-ring"><span>24:59</span></div>
+            <div><strong>Focus</strong><small>Session 2 of 4</small></div>
+          </div>
+
+          <!-- Floating: grade notification -->
+          <div class="pv-card pv-float pv-grade">
+            <i class="pv-badge"><svg viewBox="0 0 24 24"><path d="M12 3 14.6 8.4 20.5 9.2 16.2 13.3 17.3 19.2 12 16.4 6.7 19.2 7.8 13.3 3.5 9.2 9.4 8.4z" /></svg></i>
+            <div><strong>Graded · 46/50</strong><small>HTML forms lab · "Great validation!"</small></div>
+          </div>
+
+          <!-- Floating: joined a class -->
+          <div class="pv-card pv-float pv-class">
+            <div class="pv-avatars"><i>DL</i><i>EN</i><i>+12</i></div>
+            <div><strong>Web Development</strong><small>Joined with code <code>CLS-WEB221</code></small></div>
+          </div>
+        </div>
+
+        <ul class="visual-features">
+          <li><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8" /><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" /></svg>Task workflow</li>
+          <li><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>Weekly schedule</li>
+          <li><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2M9 2h6" /></svg>Focus timer</li>
+          <li><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>Classrooms</li>
+        </ul>
       </aside>
     </main>
 

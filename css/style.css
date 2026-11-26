@@ -3560,3 +3560,769 @@ body.focus-mode #focus > h2 {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   TEACHER CLASSROOM (js/teacher_classroom.js)
+   List of classes -> one class with Stream / Classwork / People tabs.
+   ========================================================================== */
+
+/* Toolbar: search + result count */
+.tc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.tc-search {
+  position: relative;
+  flex: 1 1 320px;
+  max-width: 520px;
+}
+
+.tc-search .icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  color: var(--text-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.tc-search input {
+  padding-left: 38px !important;
+}
+
+.tc-toolbar .section-note {
+  margin: 0;
+}
+
+/* Class cards: equal heights, footer pinned to the bottom */
+.tc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+.tc-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+}
+
+.tc-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.tc-card:focus-within {
+  border-color: var(--brand);
+}
+
+.tc-card-head {
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--brand-soft);
+}
+
+.tc-card-title {
+  font-size: 1.0625rem;
+  line-height: 1.3;
+}
+
+/* The title button covers the whole card, so the card is one big click target. */
+/* Beats the global button style (button:not(...)), which has higher specificity. */
+#teacher-classroom button.tc-card-open {
+  display: -webkit-box !important;
+  width: 100%;
+  min-height: calc(2 * 1.3em) !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--text) !important;
+  font-family: var(--font-display);
+  font-size: inherit !important;
+  font-weight: 700 !important;
+  line-height: inherit !important;
+  white-space: normal !important;
+  text-align: left;
+  transform: none !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tc-card-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-lg);
+}
+
+.tc-card-open:focus-visible {
+  outline: none;
+}
+
+.tc-card-open:focus-visible::after {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 35%, transparent);
+}
+
+.tc-card-meta {
+  margin-top: var(--space-1);
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tc-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+}
+
+.tc-card-stats dt {
+  color: var(--text-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tc-card-stats dd {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-attention {
+  color: var(--warning);
+}
+
+.tc-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.tc-card-go {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--brand);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.tc-card-go .icon {
+  width: 16px;
+  height: 16px;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.tc-card:hover .tc-card-go .icon {
+  transform: translateX(2px);
+}
+
+/* Class code chip */
+.tc-code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tc-code--lg {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-color: var(--brand);
+  color: var(--text);
+  font-size: 0.9375rem;
+}
+
+/* Empty / error states */
+.tc-empty {
+  display: grid;
+  grid-column: 1 / -1;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+  text-align: center;
+}
+
+.tc-empty p {
+  max-width: 46ch;
+  color: var(--text-3);
+  font-size: 0.875rem;
+}
+
+.tc-empty button {
+  margin-top: var(--space-2);
+}
+
+/* ---------- One class ---------- */
+.tc-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-bottom: var(--space-4);
+  color: var(--text-3);
+  font-size: 0.875rem;
+}
+
+.tc-back {
+  min-height: 36px !important;
+  margin-left: -10px;
+  padding: 0 10px !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--text-2) !important;
+}
+
+.tc-back:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text) !important;
+}
+
+#tc-crumb-current {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tc-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--brand-soft);
+}
+
+.tc-banner-main {
+  min-width: 0;
+}
+
+.tc-eyebrow {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.tc-banner h2 {
+  margin: 2px 0 var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.tc-banner h2:focus {
+  outline: none;
+}
+
+.tc-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tc-code-label {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.tc-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tc-btn-sm {
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  font-size: 0.8125rem !important;
+}
+
+.tc-btn-sm .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Destructive actions: red, and kept apart from the normal ones */
+.tc-btn-danger {
+  color: var(--danger) !important;
+}
+
+.tc-btn-danger:hover:not(:disabled) {
+  border-color: var(--danger) !important;
+  background: var(--danger-soft) !important;
+}
+
+.tc-btn-danger-solid {
+  border-color: var(--danger) !important;
+  background: var(--danger) !important;
+  color: #fff !important;
+}
+
+:root[data-theme="dark"] .tc-btn-danger-solid {
+  color: #1d0b0b !important;
+}
+
+.tc-btn-danger-solid:hover:not(:disabled) {
+  border-color: var(--danger) !important;
+  background: color-mix(in srgb, var(--danger) 85%, #000) !important;
+}
+
+.tc-icon-btn {
+  width: 36px;
+  min-height: 36px !important;
+  padding: 0 !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--text-3) !important;
+}
+
+.tc-icon-btn:hover:not(:disabled) {
+  border-color: var(--border) !important;
+  background: var(--surface-hover) !important;
+  color: var(--text) !important;
+}
+
+.tc-icon-btn--danger:hover:not(:disabled) {
+  border-color: transparent !important;
+  background: var(--danger-soft) !important;
+  color: var(--danger) !important;
+}
+
+/* Tabs (reuse the .log-tabs look) */
+.tc-tabs {
+  margin-bottom: var(--space-4);
+}
+
+.tc-tab-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-tab-count:empty {
+  display: none;
+}
+
+.tc-panel:focus-visible {
+  outline: none;
+}
+
+.tc-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.tc-panel-head h3 {
+  font-size: 1.0625rem;
+}
+
+.tc-panel-head .section-note {
+  margin-top: 2px;
+}
+
+/* Forms: a real grid, not the global inline flex-wrap form */
+.tc-form-grid:not([hidden]) {
+  display: grid !important;
+}
+
+.tc-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.tc-field {
+  min-width: 0;
+}
+
+.tc-field--full,
+.tc-form-grid > h4,
+.tc-form-grid > .form-message {
+  grid-column: 1 / -1;
+}
+
+.tc-optional {
+  margin-left: 4px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.tc-form-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.tc-form-grid [aria-invalid="true"] {
+  border-color: var(--danger) !important;
+}
+
+.tc-card-box {
+  margin-bottom: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.tc-card-box > h4 {
+  font-size: 1rem;
+}
+
+/* Stream composer */
+.tc-composer {
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.tc-composer .tc-composer-form {
+  padding: var(--space-5);
+}
+
+.tc-composer-trigger {
+  justify-content: flex-start !important;
+  gap: var(--space-3) !important;
+  width: 100%;
+  min-height: 64px !important;
+  padding: 0 var(--space-5) !important;
+  border: 0 !important;
+  border-radius: var(--r-lg) !important;
+  background: transparent !important;
+  color: var(--text-3) !important;
+  font-weight: 500 !important;
+  white-space: normal !important;
+  text-align: left;
+}
+
+.tc-composer-trigger:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-2) !important;
+}
+
+/* Lists: posts, tasks, people */
+.tc-list {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+}
+
+.tc-avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.tc-avatar .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.tc-post,
+.tc-task,
+.tc-person {
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.tc-post-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.tc-post-who {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.tc-post-who .section-note {
+  font-size: 0.8125rem;
+}
+
+.tc-post-title {
+  font-size: 1rem;
+}
+
+.tc-post-body {
+  margin-top: var(--space-1);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tc-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  margin-top: var(--space-3);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tc-link-chip span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tc-link-chip:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.tc-link-chip .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Task rows: details left, progress + actions right */
+.tc-task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.tc-task-title {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.tc-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.tc-task-desc {
+  display: -webkit-box;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tc-task-side {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.tc-progress-label {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-progress-label strong {
+  color: var(--text);
+}
+
+.tc-progress-track {
+  height: 6px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--brand-track);
+}
+
+.tc-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand);
+}
+
+.tc-task-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.tc-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tc-pill--warning {
+  border-color: transparent;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.tc-pill--danger {
+  border-color: transparent;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* People */
+.tc-people {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.tc-person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-radius: 0;
+}
+
+.tc-person + .tc-person {
+  border-top: 1px solid var(--border);
+}
+
+.tc-person-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Dialog */
+.tc-dialog .dialog-body {
+  display: grid !important;
+  gap: var(--space-4);
+}
+
+.tc-dialog .dialog-header {
+  margin-bottom: 0;
+}
+
+.tc-confirm-text {
+  color: var(--text-2);
+}
+
+/* Small screens */
+@media (max-width: 760px) {
+  .tc-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tc-search {
+    max-width: none;
+  }
+
+  .tc-banner {
+    align-items: stretch;
+    flex-direction: column;
+    padding: var(--space-4);
+  }
+
+  .tc-tabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .tc-tabs button {
+    flex: 1;
+  }
+
+  .tc-task {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .tc-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tc-post,
+  .tc-task {
+    padding: var(--space-4);
+  }
+
+  .tc-person .section-note {
+    display: none;
+  }
+}
