@@ -8,6 +8,9 @@ require __DIR__ . '/includes/preferences.php';
 
 $currentUser = require_login();   // not logged in -> login.html
 
+// Always re-check the session; never let Back show a cached dashboard after logout.
+header('Cache-Control: no-store, no-cache, must-revalidate');
+
 $tasks = get_tasks_for_user($conn, (int) $currentUser['id']);
 $schedules = get_schedules_for_user($conn, (int) $currentUser['id']);
 $notes = get_notes_for_user($conn, (int) $currentUser['id']);
@@ -408,7 +411,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
               id="class-section"
               name="section"
               maxlength="60"
-              placeholder="e.g. DCPET 2-2"
+              placeholder="e.g. Section A"
             />
           </div>
           <div>
@@ -903,9 +906,11 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
             </div>
 
             <p class="section-note">
-              Tasks that finished the whole workflow. Archiving a Done task
-              moves it here, and archived tasks can't be changed.
+              Tasks that finished the whole workflow. Archived tasks can't be
+              changed, but you can permanently delete ones you no longer need.
             </p>
+
+            <p id="archive-status" class="archive-status" role="status" aria-live="polite" hidden></p>
 
             <p id="archive-empty-state">
               No archived tasks yet. Finish a task, then use Archive to file it
@@ -925,6 +930,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
                     <th>Priority</th>
                     <th>Archived on</th>
                     <th>History</th>
+                    <th><span class="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody id="archive-table-body"></tbody>
@@ -1004,7 +1010,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
                 type="text"
                 id="schedule-instructor"
                 name="instructor"
-                placeholder="e.g. Prof. Mylo Atencio"
+                placeholder="e.g. Prof. Santos"
               />
             </div>
 
@@ -1017,7 +1023,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
 
         <div class="content-card">
           <div class="schedule-card-heading">
-            <h3>DCPET 2-2 Class Schedule</h3>
+            <h3>Weekly class schedule</h3>
             <button
               type="button"
               id="schedule-actions-toggle"
@@ -1312,8 +1318,9 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
             Unit 8: Persistence, Backup, & Audit Trail
           </h3>
           <p class="section-note">
-            Survives page refresh via versioned localStorage schema, provides
-            safe imports, and records state mutations.
+            Your tasks, classes and notes are saved to your account. Export a
+            JSON backup, import one to replace your current data, or reset to
+            start fresh. Every change is recorded in the audit trail below.
           </p>
 
           <div
@@ -1337,13 +1344,14 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
             />
 
             <button type="button" id="btn-reset-data" class="btn-danger">
-              Reset to Defaults
+              Reset my data
             </button>
           </div>
 
           <div id="reset-confirm-box" class="sub-card" hidden>
             <label for="reset-confirm-input"
-              >Type RESET to replace the saved app data with defaults.</label
+              >This permanently deletes all of your tasks, classes and notes and
+              restores default settings. Type RESET to confirm.</label
             >
             <input
               type="text"
@@ -1353,7 +1361,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
             />
             <div class="task-actions">
               <button type="button" id="btn-confirm-reset" class="btn-danger">
-                Confirm reset
+                Delete everything
               </button>
               <button type="button" id="btn-cancel-reset">Cancel</button>
             </div>
@@ -1363,8 +1371,8 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
             <h4>Import Payload Preview</h4>
             <p id="import-preview-text"></p>
             <div class="task-actions">
-              <button type="button" id="btn-confirm-import">
-                Confirm & Replace
+              <button type="button" id="btn-confirm-import" class="btn-danger">
+                Replace my data
               </button>
               <button type="button" id="btn-cancel-import">Cancel</button>
             </div>

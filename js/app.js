@@ -1,6 +1,9 @@
 // Workflow states in order
 const WORKFLOW_PATH = ["To do", "In progress", "In review", "Done", "Archived"];
 
+// Id of the archived task whose delete is waiting for confirmation (or null).
+let archiveDeleteId = null;
+
 // Progress excludes Archived (it's 100% by definition)
 const PROGRESS_PATH = WORKFLOW_PATH.filter((status) => status !== "Archived");
 function getDaysRemaining(task) {
@@ -288,169 +291,9 @@ if (logoutButton) {
 applyRoleView();
 
 const state = {
-  records: [
-    {
-      id: "TASK-001",
-      title: "Unit 3 Data Engine",
-      subject: "CPE Professional Course 1",
-      description:
-        "Build the JavaScript state model and deterministic task renderer.",
-      dueDate: "2026-09-28",
-      priority: "High",
-      status: "In progress",
-      createdAt: "2026-09-24T09:00:00",
-      estimatedMinutes: 120,
-    },
-    {
-      id: "TASK-002",
-      title: "Circuit Analysis Problem Set",
-      subject: "Fundamentals of Electrical Circuits",
-      description: "Solve the assigned resistance and power problems.",
-      dueDate: "2026-09-29",
-      priority: "High",
-      status: "To do",
-      createdAt: "2026-09-23T15:20:00",
-      estimatedMinutes: 90,
-    },
-    {
-      id: "TASK-003",
-      title: "Data Structures Quiz Review",
-      subject: "Data Structures",
-      description: "Review linked lists, insertion, deletion, and flowcharts.",
-      dueDate: "2026-09-30",
-      priority: "Medium",
-      status: "To do",
-      createdAt: "2026-09-22T18:10:00",
-      estimatedMinutes: 75,
-    },
-    {
-      id: "TASK-004",
-      title: "Computer Engineering Reflection Video",
-      subject: "Computer Engineering as a Discipline",
-      description:
-        "Record the reflection about speech-to-text and text-to-speech tools.",
-      dueDate: "2026-10-01",
-      priority: "Medium",
-      status: "In progress",
-      createdAt: "2026-09-21T14:00:00",
-      estimatedMinutes: 60,
-    },
-    {
-      id: "TASK-005",
-      title: "Bouncing Ball Animation",
-      subject: "Multimedia",
-      description: "Finalize the 12-frame bouncing ball animation output.",
-      dueDate: "2026-10-02",
-      priority: "Medium",
-      status: "Done",
-      createdAt: "2026-09-20T11:30:00",
-      estimatedMinutes: 100,
-    },
-    {
-      id: "TASK-006",
-      title: "Research Reading Notes",
-      subject: "Computer Engineering History",
-      description:
-        "Summarize the assigned reading and prepare answers to guide questions.",
-      dueDate: "2026-10-03",
-      priority: "Low",
-      status: "To do",
-      createdAt: "2026-09-20T08:45:00",
-      estimatedMinutes: 45,
-    },
-    {
-      id: "TASK-007",
-      title: "Weekly Class Schedule Update",
-      subject: "Personal Organization",
-      description:
-        "Update room assignments and class times for the coming week.",
-      dueDate: "2026-10-04",
-      priority: "Low",
-      status: "Done",
-      createdAt: "2026-09-19T20:00:00",
-      estimatedMinutes: 20,
-    },
-    {
-      id: "TASK-009",
-      title: "HTML Semantic Structure Review",
-      subject: "Web System Development",
-      description: "Review semantic landmarks and stable IDs from Unit 1.",
-      dueDate: "2026-10-06",
-      priority: "Medium",
-      status: "Done",
-      createdAt: "2026-09-18T10:10:00",
-      estimatedMinutes: 50,
-    },
-    {
-      id: "TASK-010",
-      title: "Responsive CSS Test",
-      subject: "Web System Development",
-      description: "Recheck StudyHub at desktop, tablet, and mobile widths.",
-      dueDate: "2026-10-07",
-      priority: "High",
-      status: "In progress",
-      createdAt: "2026-09-18T09:30:00",
-      estimatedMinutes: 80,
-    },
-    {
-      id: "TASK-011",
-      title: "Notes Cleanup",
-      subject: "Personal Organization",
-      description: "Sort recent notes by subject and remove duplicate entries.",
-      dueDate: "2026-10-08",
-      priority: "Low",
-      status: "To do",
-      createdAt: "2026-09-17T19:15:00",
-      estimatedMinutes: 25,
-    },
-    {
-      id: "TASK-012",
-      title: "Focus Session for Circuits",
-      subject: "Fundamentals of Electrical Circuits",
-      description: "Complete a focused study session before the next class.",
-      dueDate: "2026-10-09",
-      priority: "Medium",
-      status: "To do",
-      createdAt: "2026-09-17T12:00:00",
-      estimatedMinutes: 45,
-    },
-    {
-      id: "TASK-013",
-      title: "Flowchart Corrections",
-      subject: "Data Structures",
-      description:
-        "Apply final corrections to the quiz algorithms and flowcharts.",
-      dueDate: "2026-10-10",
-      priority: "High",
-      status: "Done",
-      createdAt: "2026-09-16T17:40:00",
-      estimatedMinutes: 70,
-    },
-    {
-      id: "TASK-014",
-      title: "StudyHub UI Review",
-      subject: "CPE Professional Course 1",
-      description:
-        "Review sidebar, dashboard, and focus-mode design consistency.",
-      dueDate: "2026-10-11",
-      priority: "Medium",
-      status: "To do",
-      createdAt: "2026-09-16T13:25:00",
-      estimatedMinutes: 40,
-    },
-    {
-      id: "TASK-015",
-      title: "Unit 3 Submission Check",
-      subject: "CPE Professional Course 1",
-      description:
-        "Verify mock records, derived values, rendering, event delegation, and assertions.",
-      dueDate: "2026-10-12",
-      priority: "High",
-      status: "To do",
-      createdAt: "2026-09-15T21:10:00",
-      estimatedMinutes: 60,
-    },
-  ].map((record) => ({ ...record, workflowHistory: [] })),
+  // Tasks, classes and notes are loaded from the database (index.php writes
+  // window.STUDYHUB_TASKS / _SCHEDULES / _NOTES); there is no built-in sample data.
+  records: [],
 
   query: "",
 
@@ -470,156 +313,10 @@ const state = {
   editingRecord: null,
   archivedRecords: [],
 
-  schedules: [
-    {
-      id: "SCH-001",
-      day: "Monday",
-      startTime: "10:30",
-      endTime: "11:30",
-      className: "Computer Engineering as a Discipline",
-      courseCode: "CMPE 101",
-      instructor: "Prof. Ryan Evangelista",
-    },
-    {
-      id: "SCH-002",
-      day: "Monday",
-      startTime: "13:30",
-      endTime: "16:30",
-      className: "Filipinolohiya at Pambansang Kaunlaran",
-      courseCode: "GEED 032",
-      instructor: "Prof. Jhonley Cubacub",
-    },
-    {
-      id: "SCH-003",
-      day: "Tuesday",
-      startTime: "07:30",
-      endTime: "10:30",
-      className: "2D Animation",
-      courseCode: "CPET 201",
-      instructor: "Prof. Jerome De Guzman",
-    },
-    {
-      id: "SCH-004",
-      day: "Tuesday",
-      startTime: "10:30",
-      endTime: "13:30",
-      className: "Data Structures and Algorithms",
-      courseCode: "CMPE 201",
-      instructor: "Prof. Mylo Atencio",
-    },
-    {
-      id: "SCH-005",
-      day: "Tuesday",
-      startTime: "15:00",
-      endTime: "18:00",
-      className: "Fundamentals of Electronic Circuits",
-      courseCode: "ECEN 011",
-      instructor: "TBA",
-    },
-    {
-      id: "SCH-006",
-      day: "Wednesday",
-      startTime: "10:00",
-      endTime: "13:00",
-      className: "Discrete Mathematics",
-      courseCode: "CMPE 104",
-      instructor: "Prof. Mylo Atencio",
-    },
-    {
-      id: "SCH-007",
-      day: "Wednesday",
-      startTime: "13:00",
-      endTime: "16:00",
-      className: "Fundamentals of Electrical Circuits",
-      courseCode: "ELEN 012",
-      instructor: "Prof. Ronald Fernando",
-    },
-    {
-      id: "SCH-008",
-      day: "Wednesday",
-      startTime: "16:30",
-      endTime: "18:30",
-      className: "Physical Activity Towards Health and Fitness 3",
-      courseCode: "PATHFIT 3",
-      instructor: "Prof. Remus Laglagaron",
-    },
-    {
-      id: "SCH-009",
-      day: "Friday",
-      startTime: "07:30",
-      endTime: "10:30",
-      className: "2D Animation",
-      courseCode: "CPET 201",
-      instructor: "Prof. Jerome De Guzman",
-    },
-    {
-      id: "SCH-010",
-      day: "Friday",
-      startTime: "10:30",
-      endTime: "13:30",
-      className: "Data Structures and Algorithms",
-      courseCode: "CMPE 201",
-      instructor: "Prof. Mylo Atencio",
-    },
-    {
-      id: "SCH-011",
-      day: "Friday",
-      startTime: "15:00",
-      endTime: "18:00",
-      className: "Fundamentals of Electronic Circuits",
-      courseCode: "ECEN 011",
-      instructor: "TBA",
-    },
-    {
-      id: "SCH-012",
-      day: "Friday",
-      startTime: "18:00",
-      endTime: "21:00",
-      className: "CPE Professional Course 1",
-      courseCode: "CMPE-PC1",
-      instructor: "Prof. Jose Marie Dipay",
-    },
-    {
-      id: "SCH-013",
-      day: "Saturday",
-      startTime: "07:30",
-      endTime: "10:30",
-      className: "Fundamentals of Electrical Circuits",
-      courseCode: "ELEN 012",
-      instructor: "Prof. Ronald Fernando",
-    },
-    {
-      id: "SCH-014",
-      day: "Saturday",
-      startTime: "12:00",
-      endTime: "14:00",
-      className: "CPE Professional Course 1",
-      courseCode: "CMPE-PC1",
-      instructor: "Prof. Jose Marie Dipay",
-    },
-  ],
+  schedules: [],
   editingSchedule: null,
 
-  notes: [
-    {
-      id: "NOTE-001",
-      title: "Electrical circuits",
-      body: "For a series circuit, the same current flows through every component. Add the resistances to find the total resistance.",
-      remark: "Review before the next problem set.",
-    },
-    {
-      id: "NOTE-002",
-      title: "Data structures",
-      body: "A linked list stores items in nodes. Each node points to the next node, so inserting or removing an item does not require shifting every later item.",
-      remark: "Remember to trace the pointer changes.",
-    },
-    {
-      id: "NOTE-003",
-      title: "Web development",
-      body: "Use semantic HTML elements to describe the purpose of each part of a page, and keep form labels connected to their controls.",
-      remark: "Unit 1 review",
-    },
-  ],
+  notes: [],
   editingNote: null,
 
   auditLog: [],
@@ -630,7 +327,6 @@ const state = {
 
 const STORAGE_KEY = "studyhub-state-v1";
 const SCHEMA_VERSION = 1;
-const DEFAULT_STATE = JSON.parse(JSON.stringify(state));
 let pendingImport = null;
 let persistenceBlocked = false;
 
@@ -860,8 +556,7 @@ function restoreState() {
 restoreState();
 
 /* Tasks from the database. PHP writes window.STUDYHUB_TASKS in index.php.
-   They replace the sample tasks and the tasks saved in localStorage.
-   (Saving back to the database comes in the next step.) */
+   The database is the source of truth: these replace anything in localStorage. */
 if (Array.isArray(window.STUDYHUB_TASKS)) {
   state.records = window.STUDYHUB_TASKS.filter((t) => t.status !== "Archived");
   state.archivedRecords = window.STUDYHUB_TASKS.filter(
@@ -870,13 +565,13 @@ if (Array.isArray(window.STUDYHUB_TASKS)) {
 }
 
 /* Schedules from the database. PHP writes window.STUDYHUB_SCHEDULES in index.php.
-   They replace the sample schedules and the schedules saved in localStorage. */
+   They replace anything saved in localStorage. */
 if (Array.isArray(window.STUDYHUB_SCHEDULES)) {
   state.schedules = window.STUDYHUB_SCHEDULES;
 }
 
 /* Notes from the database. PHP writes window.STUDYHUB_NOTES in index.php.
-   They replace the sample notes and the notes saved in localStorage. */
+   They replace anything saved in localStorage. */
 if (Array.isArray(window.STUDYHUB_NOTES)) {
   state.notes = window.STUDYHUB_NOTES;
 }
@@ -1757,6 +1452,27 @@ function renderArchives() {
       const history = task.workflowHistory ?? [];
       const when = archivedAt(task);
 
+      /* Second step of a delete: the row turns into a confirmation. */
+      if (archiveDeleteId === task.id) {
+        return `
+        <tr data-id="${escapeHTML(task.id)}" class="archive-confirm-row">
+          <td colspan="7">
+            <div class="archive-confirm">
+              <p>
+                <strong>Delete “${escapeHTML(task.title)}” permanently?</strong>
+                Its history will be removed and it will no longer count toward
+                your total tasks or completion rate. This can't be undone.
+              </p>
+              <div class="task-actions">
+                <button type="button" data-archive-action="cancel">Cancel</button>
+                <button type="button" class="btn-danger" data-archive-action="confirm" data-id="${escapeHTML(task.id)}">Delete permanently</button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+      }
+
       return `
         <tr data-id="${escapeHTML(task.id)}">
           <td>${escapeHTML(task.title)}</td>
@@ -1777,11 +1493,107 @@ function renderArchives() {
               </ol>
             </details>
           </td>
+          <td>
+            <button type="button" class="btn-danger" data-archive-action="delete" data-id="${escapeHTML(task.id)}" aria-label="Delete ${escapeHTML(task.title)}">Delete</button>
+          </td>
         </tr>
       `;
     })
     .join("");
 }
+
+/* ---------- Deleting archived tasks ---------- */
+
+function setArchiveStatus(message, isError = false) {
+  const status = document.querySelector("#archive-status");
+  if (!status) return;
+  status.textContent = message;
+  status.hidden = !message;
+  status.classList.toggle("is-error", isError);
+}
+
+// Re-render the archive table, then move keyboard focus somewhere sensible.
+function rerenderArchives(focusSelector) {
+  renderArchives();
+  const body = document.querySelector("#archive-table-body");
+  const target =
+    (focusSelector && body?.querySelector(focusSelector)) ||
+    body?.querySelector('[data-archive-action="delete"]') ||
+    document.querySelector("#close-archives");
+  target?.focus();
+}
+
+async function deleteArchivedTask(id) {
+  const task = state.archivedRecords.find((record) => record.id === id);
+  if (!task) return;
+
+  if (!allowed(CAPABILITIES.TASK_ARCHIVE)) {
+    setArchiveStatus("You don't have permission to delete tasks.", true);
+    return;
+  }
+
+  const confirmButton = document.querySelector(
+    '#archive-table-body [data-archive-action="confirm"]',
+  );
+  if (confirmButton) {
+    confirmButton.disabled = true;
+    confirmButton.textContent = "Deleting…";
+  }
+
+  /* Permanent, so the server goes first: the task only disappears here
+     once the database has really removed it. */
+  let message = "";
+  try {
+    const response = await fetch("api/tasks.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    const data = await response.json();
+    if (!data.ok) message = data.message || "Delete failed.";
+  } catch {
+    message = "Could not reach the server.";
+  }
+
+  if (message) {
+    setArchiveStatus(`Could not delete the task: ${message}`, true);
+    rerenderArchives('[data-archive-action="confirm"]');
+    return;
+  }
+
+  state.archivedRecords = state.archivedRecords.filter(
+    (record) => record.id !== id,
+  );
+  archiveDeleteId = null;
+  logAudit("DELETE", id, `Deleted archived task: ${task.title}`);
+  render();
+  setArchiveStatus(`Deleted “${task.title}”.`);
+  rerenderArchives();
+}
+
+document.querySelector("#archive-table-body")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-archive-action]");
+  if (!button) return;
+
+  const { archiveAction, id } = button.dataset;
+
+  if (archiveAction === "delete") {
+    archiveDeleteId = id;
+    setArchiveStatus("");
+    rerenderArchives('[data-archive-action="cancel"]');
+  }
+
+  if (archiveAction === "cancel") {
+    const cancelledId = archiveDeleteId;
+    archiveDeleteId = null;
+    rerenderArchives(`[data-archive-action="delete"][data-id="${cancelledId}"]`);
+  }
+
+  if (archiveAction === "confirm") {
+    deleteArchivedTask(id);
+  }
+});
 
 function renderEmptyState(records) {
   const emptyState = document.querySelector("#task-empty-state");
@@ -1791,8 +1603,19 @@ function renderEmptyState(records) {
 
   const isEmpty = records.length === 0;
 
+  /* Keep the list header (and its Archives button) visible; only hide the
+     table and pagination when there is nothing to show. */
+  taskList.querySelector(".table-wrapper").hidden = isEmpty;
+  taskList.querySelector("#task-pagination").hidden = isEmpty;
+  taskList.querySelector("#task-result-count").hidden = isEmpty;
+
   emptyState.hidden = !isEmpty;
-  taskList.hidden = isEmpty;
+  if (isEmpty) {
+    emptyState.textContent =
+      state.records.length === 0
+        ? "No active tasks. Finished tasks you archived are in Archives."
+        : "No tasks match the current search or filters.";
+  }
 }
 
 function renderDetails() {
@@ -3359,6 +3182,9 @@ if (archivesDialog && openArchivesButton) {
 
   openArchivesButton.addEventListener("click", () => {
     if (archivesDialog.hasAttribute("open")) return;
+    // Start fresh: no half-finished delete or old status from last time.
+    archiveDeleteId = null;
+    setArchiveStatus("");
     renderArchives();
 
     if (typeof archivesDialog.showModal === "function")
@@ -3415,6 +3241,17 @@ function showWorkflowMessage(message) {
 
   messageRegion.textContent = message;
   messageRegion.hidden = false;
+
+  // Fade out after a few seconds; a newer message restarts the timer.
+  clearTimeout(showWorkflowMessage.timer);
+  messageRegion.classList.remove("is-leaving");
+  showWorkflowMessage.timer = setTimeout(() => {
+    messageRegion.classList.add("is-leaving");
+    showWorkflowMessage.timer = setTimeout(() => {
+      messageRegion.hidden = true;
+      messageRegion.classList.remove("is-leaving");
+    }, 250);
+  }, 4000);
 }
 
 function escapeHTML(value) {
@@ -3644,6 +3481,68 @@ function closeImportPreview() {
   if (preview) preview.hidden = true;
 }
 
+/* Import and Reset replace everything in the database (api/data.php), then
+   reload the page so it shows exactly what the database now holds. */
+const FLASH_KEY = "studyhub-flash";
+
+async function replaceDataOnServer(body, button, busyLabel) {
+  const buttons = document.querySelectorAll(
+    "#system-data button, #system-data .button-file-label",
+  );
+  const originalLabel = button?.textContent;
+  buttons.forEach((b) => b.setAttribute("aria-disabled", "true"));
+  buttons.forEach((b) => (b.disabled = true));
+  if (button) button.textContent = busyLabel;
+
+  try {
+    const response = await fetch("api/data.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.message || "The server refused the change.");
+    return data;
+  } catch (error) {
+    showStorageStatus(
+      `${error.message || "Could not reach the server."} Your data was not changed.`,
+      true,
+    );
+    buttons.forEach((b) => {
+      b.disabled = false;
+      b.removeAttribute("aria-disabled");
+    });
+    if (button) button.textContent = originalLabel;
+    return null;
+  }
+}
+
+// Reload into the new data, carrying a one-line confirmation across the reload.
+function reloadWithMessage(message, theme) {
+  try {
+    sessionStorage.setItem(FLASH_KEY, message);
+    if (theme) localStorage.setItem(THEME_KEY, theme);
+    // Drop the old browser copy so nothing stale is mixed back in.
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* storage blocked: the reload still shows the new data */
+  }
+  window.location.reload();
+}
+
+function showFlashMessage() {
+  try {
+    const message = sessionStorage.getItem(FLASH_KEY);
+    if (message) {
+      sessionStorage.removeItem(FLASH_KEY);
+      showMessage(message);
+    }
+  } catch {
+    /* storage blocked */
+  }
+}
+
 function runPersistenceAssertions() {
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const valid = createStoragePayload();
@@ -3677,16 +3576,38 @@ function runPersistenceAssertions() {
     "Persistence assertion 4 failed: a missing required collection was accepted.",
   );
 
+  // A complete, valid task used only by the checks below.
+  const testTask = {
+    id: "TASK-TEST",
+    title: "Persistence test task",
+    subject: "Testing",
+    description: "",
+    dueDate: "2026-12-31",
+    priority: "Medium",
+    status: "To do",
+    createdAt: "2026-01-01T00:00:00",
+    estimatedMinutes: 30,
+    workflowHistory: [],
+  };
+
+  // Control: the test task on its own is valid, so the rejections below are
+  // caused only by the duplicate ID / missing field.
+  const singleTask = clone(valid);
+  singleTask.records = [clone(testTask)];
+  console.assert(
+    isValidPayload(singleTask),
+    "Persistence assertion 5a failed: a valid single task was rejected.",
+  );
+
   const duplicateIds = clone(valid);
-  const sampleTask = { ...DEFAULT_STATE.records[0] };
-  duplicateIds.records = [sampleTask, { ...sampleTask }];
+  duplicateIds.records = [clone(testTask), clone(testTask)];
   console.assert(
     !isValidPayload(duplicateIds),
     "Persistence assertion 5 failed: duplicate record IDs were accepted.",
   );
 
   const missingTaskField = clone(valid);
-  missingTaskField.records = [{ ...DEFAULT_STATE.records[0] }];
+  missingTaskField.records = [clone(testTask)];
   delete missingTaskField.records[0].title;
   console.assert(
     !isValidPayload(missingTaskField),
@@ -3761,7 +3682,7 @@ document
       const previewText = document.querySelector("#import-preview-text");
       const preview = document.querySelector("#import-preview-box");
       if (previewText) {
-        previewText.textContent = `${count} task record(s) (${payload.records.length} active, ${payload.archivedRecords.length} archived), ${payload.schedules.length} schedule(s), and ${payload.notes.length} note(s). Backup saved ${new Date(payload.savedAt).toLocaleString()}. Confirm to replace current app data.`;
+        previewText.textContent = `This backup from ${new Date(payload.savedAt).toLocaleString()} has ${count} task(s) (${payload.records.length} active, ${payload.archivedRecords.length} archived), ${payload.schedules.length} class(es) and ${payload.notes.length} note(s). Importing it permanently replaces all of your current tasks, classes and notes.`;
       }
       if (preview) preview.hidden = false;
       showStorageStatus(
@@ -3778,23 +3699,26 @@ document
     }
   });
 
-document.querySelector("#btn-confirm-import")?.addEventListener("click", () => {
+document.querySelector("#btn-confirm-import")?.addEventListener("click", async (event) => {
   if (!pendingImport || !isValidPayload(pendingImport)) {
     showStorageStatus("There is no valid import to confirm.", true);
     closeImportPreview();
     return;
   }
 
-  const recordCount =
-    pendingImport.records.length + pendingImport.archivedRecords.length;
-  applyPayload(pendingImport);
-  persistenceBlocked = false;
-  logAudit("IMPORT", "application", `Imported ${recordCount} task record(s)`);
-  closeImportPreview();
-  updateThemeControls();
-  updatePreferenceControls();
-  render();
-  showStorageStatus("Backup imported and saved.");
+  showStorageStatus("Importing backup…");
+  const result = await replaceDataOnServer(
+    { action: "import", data: pendingImport },
+    event.currentTarget,
+    "Importing…",
+  );
+  if (!result) return;
+
+  const { tasks, schedules, notes } = result.counts;
+  reloadWithMessage(
+    `Backup imported: ${tasks} task(s), ${schedules} class(es) and ${notes} note(s).`,
+    result.theme,
+  );
 });
 
 document.querySelector("#btn-cancel-import")?.addEventListener("click", () => {
@@ -3823,7 +3747,7 @@ document.querySelector("#btn-cancel-reset")?.addEventListener("click", () => {
   showStorageStatus("Reset cancelled. Current data was not changed.");
 });
 
-document.querySelector("#btn-confirm-reset")?.addEventListener("click", () => {
+document.querySelector("#btn-confirm-reset")?.addEventListener("click", async (event) => {
   const input = document.querySelector("#reset-confirm-input");
   if (input?.value !== "RESET") {
     showStorageStatus('Type "RESET" exactly to confirm the data reset.', true);
@@ -3831,18 +3755,19 @@ document.querySelector("#btn-confirm-reset")?.addEventListener("click", () => {
     return;
   }
 
-  Object.assign(state, JSON.parse(JSON.stringify(DEFAULT_STATE)));
-  state.preferences.theme = "dark";
-  persistenceBlocked = false;
   closeImportPreview();
-  const resetBox = document.querySelector("#reset-confirm-box");
-  if (resetBox) resetBox.hidden = true;
-  input.value = "";
-  logAudit("RESET", "application", "Restored default app data");
-  updateThemeControls();
-  updatePreferenceControls();
-  render();
-  showStorageStatus("App data was reset to defaults.");
+  showStorageStatus("Resetting your data…");
+  const result = await replaceDataOnServer(
+    { action: "reset" },
+    event.currentTarget,
+    "Resetting…",
+  );
+  if (!result) return;
+
+  reloadWithMessage(
+    "Your data was reset. All tasks, classes and notes were deleted and settings restored to defaults.",
+    result.theme,
+  );
 });
 
 // Initial render
@@ -3850,6 +3775,7 @@ runPersistenceAssertions();
 runDashboardMetricAssertions();
 updatePreferenceControls();
 render();
+showFlashMessage();
 if (currentView === "admin") {
   renderAdminQA(runQualityAssuranceSuite());
 }

@@ -3,7 +3,7 @@
 // The page sends task changes here. This file saves them in the database.
 // It receives JSON and answers with JSON.
 //
-// Actions:  create  |  update  |  status
+// Actions:  create  |  update  |  status  |  delete (archived tasks only)
 
 require __DIR__ . '/../includes/auth.php';
 require __DIR__ . '/../includes/db.php';
@@ -27,7 +27,7 @@ function task_number($id)
 // Get one task, but only if it belongs to this user. Returns null if not found.
 function find_task($conn, $taskId, $userId)
 {
-    $stmt = mysqli_prepare($conn, 'SELECT id, status FROM tasks WHERE id = ? AND user_id = ?');
+    $stmt = mysqli_prepare($conn, 'SELECT id, title, status FROM tasks WHERE id = ? AND user_id = ?');
     mysqli_stmt_bind_param($stmt, 'ii', $taskId, $userId);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
@@ -164,6 +164,29 @@ try {
         $auditAction = ($next === 'Archived') ? 'ARCHIVE' : 'STATUS_CHANGE';
         write_audit($conn, $userId, $auditAction, 'task', $entityId, "$previous → $next ($label)");
 
+        reply(['ok' => true]);
+    }
+
+    // ---------- DELETE an archived task (permanent) ----------
+    if ($action === 'delete') {
+        $taskId = task_number($input['id'] ?? '');
+        $task = find_task($conn, $taskId, $userId);
+        if (!$task) {
+            reply(['ok' => false, 'message' => 'Task not found.'], 404);
+        }
+        // Only finished, archived work can be deleted. Active tasks must be
+        // completed and archived first.
+        if ($task['status'] !== 'Archived') {
+            reply(['ok' => false, 'message' => 'Only archived tasks can be deleted.'], 409);
+        }
+
+        // task_history rows are removed automatically (ON DELETE CASCADE).
+        $stmt = mysqli_prepare($conn, 'DELETE FROM tasks WHERE id = ? AND user_id = ?');
+        mysqli_stmt_bind_param($stmt, 'ii', $taskId, $userId);
+        mysqli_stmt_execute($stmt);
+
+        $entityId = 'TASK-' . $taskId;
+        write_audit($conn, $userId, 'DELETE', 'task', $entityId, 'Deleted archived task: ' . $task['title']);
         reply(['ok' => true]);
     }
 

@@ -41,10 +41,3 @@ CREATE TABLE task_history (
   CONSTRAINT fk_history_task FOREIGN KEY (task_id)
     REFERENCES tasks (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
-
--- Three test tasks for user 1 (the TEMP user in index.php)
-INSERT INTO tasks (user_id, title, subject, description, due_date, priority, status, estimated_minutes)
-VALUES
-  (1, 'Finish lab report',      'Physics',     'Write the results section.', '2026-12-01', 'High',   'In progress', 120),
-  (1, 'Read chapter 5',         'Literature',  'Take notes on the themes.',  '2026-11-30', 'Medium', 'To do',        60),
-  (1, 'Submit math problem set','Calculus II', 'Problems 1 to 15.',          '2026-11-27', 'High',   'To do',        90);

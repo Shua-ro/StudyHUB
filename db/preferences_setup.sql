@@ -14,8 +14,3 @@ CREATE TABLE user_preferences (
   updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id)
 ) ENGINE=InnoDB;
-
--- Default preferences for user 1
-INSERT INTO user_preferences (user_id, theme, filter_status, filter_priority, sort_key, sort_direction, page_size)
-VALUES (1, 'system', 'ALL', 'ALL', 'dueDate', 'asc', '10')
-ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP;
