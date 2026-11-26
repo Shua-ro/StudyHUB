@@ -4,7 +4,7 @@
 // Actions: get, update
 
 require __DIR__ . '/../includes/auth.php';
-require __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db.php';   // (auth.php already loads it)
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -19,10 +19,7 @@ if (!in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET'], true)) {
     reply(['ok' => false, 'message' => 'Use POST or GET.'], 405);
 }
 
-$user = current_user();
-if (!$user) {
-    reply(['ok' => false, 'message' => 'You are not logged in.'], 401);
-}
+$user = api_user();   // 401 if signed out, 403 if a password change is required
 $userId = (int) $user['id'];
 
 try {

@@ -113,6 +113,37 @@ const TRANSITION_CONDITIONS = {
 const AUTH = window.StudyHubAuth;
 const ROLES = AUTH.ROLES;
 
+/* If the server says this session is no longer valid (account suspended,
+   banned, or signed out everywhere), leave the page and explain why on the
+   login screen instead of letting saves fail silently. */
+const LOGIN_NOTICES = ["suspended", "banned", "pending", "signed_out"];
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const response = await nativeFetch(...args);
+  const url = String(args[0]?.url ?? args[0] ?? "");
+  if (response.status === 401 && url.includes("api/")) {
+    let code = "";
+    try {
+      code = (await response.clone().json()).code ?? "";
+    } catch {
+      /* not JSON: fall back to a plain redirect */
+    }
+    const notice = LOGIN_NOTICES.includes(code) ? `?notice=${code}` : "";
+    window.location.replace(`login.html${notice}`);
+  }
+  // After an admin reset: everything is refused until a new password is chosen.
+  if (response.status === 403 && url.includes("api/")) {
+    try {
+      if ((await response.clone().json()).code === "must_change_password") {
+        showPasswordChangeRequired();
+      }
+    } catch {
+      /* not JSON */
+    }
+  }
+  return response;
+};
+
 // Dev role override: if ?dev=1 and a saved dev role exists, use it instead of real auth
 let devRoleOverride = null;
 if (new URLSearchParams(location.search).has("dev")) {
@@ -189,7 +220,12 @@ const ROLE_PERMISSIONS = {
     CAPABILITIES.ANALYTICS_VIEW,
   ]),
   admin: new Set(Object.values(CAPABILITIES)),
+  super_admin: new Set(Object.values(CAPABILITIES)),
 };
+
+/* NOTE: these browser-side checks only decide what to SHOW. The server
+   (includes/permissions.php + includes/auth.php) is what actually enforces
+   who may do what; never rely on this list for security. */
 
 // Checks if current role has a capability
 function allowed(capability) {
@@ -236,13 +272,7 @@ function applyRoleView() {
   if (currentUser) {
     setLabel("#user-label", currentUser.displayName);
     setLabel("#user-role", ROLES[currentUser.role]?.label ?? currentUser.role);
-    const initials = String(currentUser.displayName ?? "")
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join("");
-    setLabel("#user-initials", initials || "?");
+    setLabel("#user-initials", initialsOf(currentUser.displayName));
   }
 
   if (currentView === "admin") {
@@ -252,6 +282,8 @@ function applyRoleView() {
     document
       .querySelector(".primary-nav a")
       ?.setAttribute("aria-current", "page");
+    loadAdminOverview();
+    loadAdminReports();
   }
 
   if (currentView === "teacher") {
@@ -268,6 +300,181 @@ function applyRoleView() {
 function setLabel(selector, text) {
   const element = document.querySelector(selector);
   if (element) element.textContent = text;
+}
+
+// "Ana Bautista" -> "AB"
+function initialsOf(name) {
+  return (
+    String(name ?? "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join("") || "?"
+  );
+}
+
+/* Admin dashboard: usage report + sign-ins chart (api/admin.php "reports").
+   NOTE: called from applyRoleView() at startup, so nothing here may touch a
+   const declared further down this file before the first await. */
+async function loadAdminReports() {
+  let data;
+  try {
+    const response = await fetch("api/admin.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ action: "reports" }),
+    });
+    data = await response.json();
+  } catch {
+    return;
+  }
+  if (!data?.ok) return;
+
+  const { accounts, content, security, signIns } = data;
+  setLabel("#report-active7", String(accounts.active7));
+  setLabel("#report-new7", String(accounts.new7));
+  setLabel("#report-new30", `${accounts.new30} in the last 30 days`);
+  setLabel("#report-tasks7", String(content.tasksCreated7));
+  setLabel("#report-completion", `${content.completionRate}%`);
+  setLabel("#report-tasks-total", `of ${content.tasks} task${content.tasks === 1 ? "" : "s"} finished`);
+  setLabel("#report-classes", String(content.classes));
+  setLabel("#report-notes", String(content.notes));
+
+  // Security figures only arrive for Super Admins (the server decides).
+  const securityBlock = document.querySelector("#report-security");
+  if (securityBlock) securityBlock.hidden = !security;
+  if (security) {
+    setLabel("#report-failed7", String(security.failed7));
+    setLabel("#report-blocked7", String(security.blocked7));
+    setLabel("#report-denied7", String(security.denied7));
+  }
+
+  renderSignInChart(signIns);
+}
+
+/* Single-series bar chart, plain HTML/CSS (no library).
+   One hue, thin bars with 4px rounded tops on the baseline, recessive grid,
+   direct labels only on the busiest day and today, a hover/focus tooltip on
+   every day, and a table version for screen readers. */
+function renderSignInChart(days) {
+  const chart = document.querySelector("#signins-chart");
+  if (!chart) return;
+  const total = days.reduce((sum, day) => sum + day.count, 0);
+  const max = Math.max(...days.map((day) => day.count));
+  setLabel("#signins-total", `${total} sign-in${total === 1 ? "" : "s"} in total`);
+  document.querySelector("#signins-empty").hidden = total > 0;
+  chart.hidden = total === 0;
+
+  // A round top for the scale: 1, 2, 5, 10, 20, 50, ...
+  const niceMax = (() => {
+    if (max <= 4) return 4;
+    const power = 10 ** Math.floor(Math.log10(max));
+    return [1, 2, 5, 10].map((step) => step * power).find((value) => value >= max);
+  })();
+
+  const label = (iso, options) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, options);
+  const lastIndex = days.length - 1;
+  const busiest = days.findIndex((day) => day.count === max);
+
+  const columns = days
+    .map((day, index) => {
+      const height = (day.count / niceMax) * 100;
+      const isToday = index === lastIndex;
+      const showValue = day.count > 0 && (index === busiest || isToday);
+      const full = `${label(day.date, { weekday: "short", month: "short", day: "numeric" })}: ${day.count} sign-in${day.count === 1 ? "" : "s"}`;
+      const axis = isToday ? "Today" : label(day.date, index === 0 ? { month: "short", day: "numeric" } : { day: "numeric" });
+      return `
+        <div class="bar-col" tabindex="0" data-tip="${escapeHTML(full)}" aria-label="${escapeHTML(full)}">
+          <div class="bar-plot">
+            ${showValue ? `<span class="bar-value">${day.count}</span>` : ""}
+            <span class="bar-mark" style="height:${height}%"></span>
+          </div>
+          <span class="bar-x${isToday ? " is-today" : ""}">${escapeHTML(axis)}</span>
+        </div>`;
+    })
+    .join("");
+
+  chart.innerHTML = `
+    <div class="bar-grid" aria-hidden="true">
+      <span style="bottom:100%">${niceMax}</span>
+      <span style="bottom:50%">${niceMax / 2}</span>
+    </div>
+    <div class="bar-cols">${columns}</div>
+    <div class="chart-tooltip" role="presentation" hidden></div>`;
+
+  document.querySelector("#signins-table").innerHTML = days
+    .map(
+      (day) =>
+        `<tr><td>${escapeHTML(label(day.date, { weekday: "short", month: "short", day: "numeric" }))}</td><td>${day.count}</td></tr>`,
+    )
+    .join("");
+
+  // Tooltip follows the hovered/focused day.
+  const tooltip = chart.querySelector(".chart-tooltip");
+  const show = (col) => {
+    tooltip.textContent = col.dataset.tip;
+    tooltip.hidden = false;
+    const chartBox = chart.getBoundingClientRect();
+    const colBox = col.getBoundingClientRect();
+    const center = colBox.left - chartBox.left + colBox.width / 2;
+    tooltip.style.left = `${Math.min(Math.max(center, 80), chartBox.width - 80)}px`;
+    chart.querySelectorAll(".bar-col.is-active").forEach((c) => c.classList.remove("is-active"));
+    col.classList.add("is-active");
+  };
+  const hide = () => {
+    tooltip.hidden = true;
+    chart.querySelectorAll(".bar-col.is-active").forEach((c) => c.classList.remove("is-active"));
+  };
+  chart.querySelectorAll(".bar-col").forEach((col) => {
+    col.addEventListener("mouseenter", () => show(col));
+    col.addEventListener("focus", () => show(col));
+    col.addEventListener("blur", hide);
+  });
+  chart.addEventListener("mouseleave", hide);
+}
+
+/* Admin dashboard: account counts from api/admin.php (the server checks the role). */
+async function loadAdminOverview() {
+  const error = document.querySelector("#admin-overview-error");
+  try {
+    const response = await fetch("api/admin.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ action: "overview" }),
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.message || "Could not load the overview.");
+
+    const { byRole, byStatus } = data;
+    setLabel("#admin-stat-total", String(data.total));
+    setLabel("#admin-stat-student", String(byRole.student ?? 0));
+    setLabel("#admin-stat-teacher", String(byRole.teacher ?? 0));
+    setLabel(
+      "#admin-stat-staff",
+      String((byRole.admin ?? 0) + (byRole.super_admin ?? 0)),
+    );
+    setLabel("#admin-stat-pending", String(byStatus.pending ?? 0));
+    setLabel(
+      "#admin-stat-blocked",
+      String((byStatus.suspended ?? 0) + (byStatus.banned ?? 0)),
+    );
+    // Only draw attention to approvals when someone is actually waiting.
+    document
+      .querySelector('[data-stat="pending"]')
+      ?.classList.toggle("has-items", (byStatus.pending ?? 0) > 0);
+    const review = document.querySelector("#admin-review-pending");
+    if (review) review.hidden = !((byStatus.pending ?? 0) > 0);
+    if (error) error.hidden = true;
+  } catch (problem) {
+    if (error) {
+      error.textContent = problem.message;
+      error.hidden = false;
+    }
+  }
 }
 
 const logoutButton = document.querySelector("#logout-btn");
@@ -355,7 +562,7 @@ function isValidPayload(payload) {
     payload.schemaVersion !== SCHEMA_VERSION ||
     typeof payload.savedAt !== "string" ||
     Number.isNaN(Date.parse(payload.savedAt)) ||
-    !["admin", "student", "teacher"].includes(payload.activeRole) ||
+    !["super_admin", "admin", "student", "teacher"].includes(payload.activeRole) ||
     (payload.preferences !== undefined &&
       (typeof payload.preferences !== "object" ||
         !["dark", "light", "system"].includes(payload.preferences.theme) ||
@@ -3100,6 +3307,8 @@ function goToSection(targetId) {
     }
   });
 
+  // Let sections that load data on demand (e.g. Users) know they are visible.
+  document.dispatchEvent(new CustomEvent("section:shown", { detail: targetId }));
   return true;
 }
 
@@ -3170,6 +3379,1242 @@ setText(
     day: "numeric",
   }),
 );
+
+/* ---------- Profile (every role manages their OWN account) ---------- */
+
+const profileUser = { ...(window.STUDYHUB_USER ?? {}) };
+
+function setFormMessage(selector, text, isError = false) {
+  const box = document.querySelector(selector);
+  if (!box) return;
+  box.textContent = text;
+  box.hidden = !text;
+  box.classList.toggle("is-error", isError);
+}
+
+async function postProfile(body) {
+  const response = await fetch("api/profile.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+  });
+  return response.json();
+}
+
+// Mark the field the server complained about (and clear old marks).
+function markField(form, fieldName) {
+  form.querySelectorAll("[aria-invalid]").forEach((field) => {
+    field.removeAttribute("aria-invalid");
+  });
+  const field = fieldName && form.elements[fieldName];
+  if (field) {
+    field.setAttribute("aria-invalid", "true");
+    field.focus();
+  }
+}
+
+const detailsForm = document.querySelector("#profile-details-form");
+if (detailsForm) {
+  const emailInput = detailsForm.elements.email;
+  const emailPasswordField = document.querySelector("#profile-email-password-field");
+
+  const fillDetails = () => {
+    detailsForm.elements.name.value = profileUser.name ?? "";
+    emailInput.value = profileUser.username ?? "";
+    detailsForm.elements.currentPassword.value = "";
+    if (emailPasswordField) emailPasswordField.hidden = true;
+  };
+  fillDetails();
+  setLabel("#profile-role", ROLES[profileUser.role]?.label ?? profileUser.role ?? "—");
+
+  // Only ask for the password once the email actually changes.
+  emailInput.addEventListener("input", () => {
+    const changed =
+      emailInput.value.trim().toLowerCase() !== String(profileUser.username ?? "");
+    if (emailPasswordField) emailPasswordField.hidden = !changed;
+  });
+
+  detailsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = detailsForm.querySelector('button[type="submit"]');
+    const body = {
+      action: "update_details",
+      name: detailsForm.elements.name.value.trim(),
+      email: emailInput.value.trim().toLowerCase(),
+      currentPassword: detailsForm.elements.currentPassword.value,
+    };
+    if (!body.name) {
+      markField(detailsForm, "name");
+      return setFormMessage("#profile-details-message", "Enter your full name.", true);
+    }
+
+    button.disabled = true;
+    try {
+      const data = await postProfile(body);
+      if (!data.ok) {
+        markField(detailsForm, data.field);
+        return setFormMessage("#profile-details-message", data.message, true);
+      }
+      markField(detailsForm, null);
+      profileUser.name = data.name;
+      profileUser.username = data.email;
+      // Keep the header in sync with the new name.
+      setLabel("#user-label", data.name);
+      setLabel("#user-initials", initialsOf(data.name));
+      setLabel("#admin-name", data.name);
+      fillDetails();
+      setFormMessage("#profile-details-message", data.message);
+    } catch {
+      setFormMessage("#profile-details-message", "Could not reach the server. Nothing was changed.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+const passwordForm = document.querySelector("#profile-password-form");
+if (passwordForm) {
+  passwordForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = passwordForm.querySelector('button[type="submit"]');
+    const { currentPassword, newPassword, confirmPassword } = passwordForm.elements;
+
+    if (!currentPassword.value) {
+      markField(passwordForm, "currentPassword");
+      return setFormMessage("#profile-password-message", "Enter your current password.", true);
+    }
+    if (newPassword.value.length < 8) {
+      markField(passwordForm, "newPassword");
+      return setFormMessage("#profile-password-message", "Your new password must be at least 8 characters.", true);
+    }
+    if (newPassword.value !== confirmPassword.value) {
+      markField(passwordForm, "confirmPassword");
+      return setFormMessage("#profile-password-message", "The new passwords don't match.", true);
+    }
+
+    button.disabled = true;
+    try {
+      const data = await postProfile({
+        action: "change_password",
+        currentPassword: currentPassword.value,
+        newPassword: newPassword.value,
+      });
+      if (!data.ok) {
+        markField(passwordForm, data.field);
+        return setFormMessage("#profile-password-message", data.message, true);
+      }
+      markField(passwordForm, null);
+      passwordForm.reset();
+      profileUser.mustChangePassword = false;
+      document.querySelector("#profile-password-note")?.classList.remove("is-required");
+      setFormMessage("#profile-password-message", data.message);
+    } catch {
+      setFormMessage("#profile-password-message", "Could not reach the server. Nothing was changed.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+/* After an admin resets the password, the user must pick a new one.
+   The server refuses everything else (403 "must_change_password") until then. */
+function showPasswordChangeRequired() {
+  if (!goToSection("profile")) return;
+  const note = document.querySelector("#profile-password-note");
+  if (note) {
+    note.textContent =
+      "An administrator reset your password. Enter the temporary password as your current password, then choose a new one to keep using StudyHub.";
+    note.classList.add("is-required");
+  }
+  document.querySelector("#profile-current-password")?.focus();
+}
+
+if (profileUser.mustChangePassword) showPasswordChangeRequired();
+
+/* ---------- Users (Admin / Super Admin) ----------
+   The server decides what this viewer may do to each account and sends it as
+   user.can (e.g. ["edit","suspend"]). The page only ever offers those actions;
+   api/admin.php re-checks every request anyway. */
+
+const usersState = { search: "", role: "", status: "", page: 1, users: [], viewer: null };
+const ACCOUNT_STATUS_LABELS = {
+  active: "Active",
+  pending: "Waiting for approval",
+  suspended: "Suspended",
+  banned: "Banned",
+};
+
+async function postAdmin(body) {
+  const response = await fetch("api/admin.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+  });
+  return response.json();
+}
+
+// "2026-11-26 11:05:35" (database time) -> "Nov 26, 2026"
+function formatAccountDate(value, withTime = false) {
+  if (!value) return "Never";
+  const date = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return "—";
+  return withTime
+    ? date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function renderUserRow(user) {
+  const reason = user.statusReason ? ` title="${escapeHTML(user.statusReason)}"` : "";
+  const canApprove = user.can.includes("approve");
+  return `
+    <tr data-user-id="${user.id}">
+      <td>
+        <div class="user-cell">
+          <span class="avatar avatar-sm" aria-hidden="true">${escapeHTML(initialsOf(user.name))}</span>
+          <div>
+            <strong>${escapeHTML(user.name)}</strong>${user.isMe ? ' <span class="you-tag">You</span>' : ""}
+            <span class="user-email">${escapeHTML(user.email)}</span>
+          </div>
+        </div>
+      </td>
+      <td><span class="role-pill" data-role="${escapeHTML(user.role)}">${escapeHTML(user.roleLabel)}</span></td>
+      <td><span class="account-status" data-status="${escapeHTML(user.status)}"${reason}>${escapeHTML(ACCOUNT_STATUS_LABELS[user.status] ?? user.status)}</span></td>
+      <td class="nowrap">${escapeHTML(formatAccountDate(user.lastLogin, true))}</td>
+      <td>
+        <div class="task-actions row-actions">
+          ${canApprove ? `<button type="button" class="primary-action" data-user-act="approve" data-id="${user.id}">Approve</button>` : ""}
+          <button type="button" data-user-act="manage" data-id="${user.id}">${user.can.length ? "Manage" : "View"}</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
+async function loadUsers() {
+  const body = document.querySelector("#users-table-body");
+  if (!body) return;
+
+  const [data, overview] = await Promise.all([
+    postAdmin({
+      action: "list_users",
+      search: usersState.search,
+      role: usersState.role,
+      status: usersState.status,
+      page: usersState.page,
+    }),
+    postAdmin({ action: "overview" }),
+  ]);
+  if (!data.ok) {
+    setFormMessage("#users-message", data.message, true);
+    return;
+  }
+
+  usersState.users = data.users;
+  usersState.viewer = data.viewer;
+  usersState.page = data.page;
+
+  body.innerHTML = data.users.map(renderUserRow).join("");
+  document.querySelector("#users-empty").hidden = data.users.length > 0;
+  setLabel("#users-count", `${data.total} account${data.total === 1 ? "" : "s"}`);
+  document.querySelector("#users-create-btn").hidden = !data.viewer.canCreate;
+
+  // "2 accounts are waiting for approval" (hidden while already filtering by it).
+  const pending = overview.ok ? overview.byStatus.pending ?? 0 : 0;
+  const note = document.querySelector("#users-pending-note");
+  note.hidden = pending === 0 || usersState.status === "pending";
+  setLabel(
+    "#users-pending-text",
+    `${pending} account${pending === 1 ? " is" : "s are"} waiting for approval.`,
+  );
+
+  const pagination = document.querySelector("#users-pagination");
+  pagination.innerHTML =
+    data.pages > 1
+      ? `<button type="button" data-users-page="${data.page - 1}" ${data.page <= 1 ? "disabled" : ""}>Previous</button>
+         <span>Page ${data.page} of ${data.pages}</span>
+         <button type="button" data-users-page="${data.page + 1}" ${data.page >= data.pages ? "disabled" : ""}>Next</button>`
+      : "";
+}
+
+// Refresh everything an account change can affect.
+async function refreshAfterUserChange() {
+  await loadUsers();
+  loadAdminOverview();
+}
+
+/* ----- Manage dialog ----- */
+
+const userDialog = document.querySelector("#user-dialog");
+let dialogUserId = null;
+
+function dialogSection(title, body, extraClass = "") {
+  return `<section class="dialog-section ${extraClass}"><h4>${title}</h4>${body}</section>`;
+}
+
+function renderUserDialog(user) {
+  setLabel("#user-dialog-title", user.name);
+  setLabel(
+    "#user-dialog-meta",
+    `${user.email} · ${user.roleLabel} · ${ACCOUNT_STATUS_LABELS[user.status] ?? user.status}` +
+      (user.statusReason ? ` (${user.statusReason})` : "") +
+      ` · Joined ${formatAccountDate(user.createdAt)}`,
+  );
+
+  const can = new Set(user.can);
+  const parts = [];
+
+  // Shortcuts to this person's history (security log: Super Admin only).
+  // Admins only see students' and teachers' activity, so only offer it where it exists.
+  const showActivity =
+    currentUser?.role === "super_admin" || ["student", "teacher"].includes(user.role);
+  parts.push(
+    `<div class="dialog-links">
+       ${showActivity ? `<button type="button" class="btn" data-open-log="activity">View activity</button>` : ""}
+       ${currentUser?.role === "super_admin" ? `<button type="button" class="btn" data-open-log="security">View security log</button>` : ""}
+     </div>`,
+  );
+
+  if (!can.size) {
+    parts.push(`<p class="locked-note">${escapeHTML(user.lockedReason || "You can't change this account.")}</p>`);
+  }
+
+  if (can.has("view_content")) {
+    parts.push(
+      dialogSection(
+        "Content",
+        `<p class="section-note">See this person's tasks, classes and notes, and remove anything that breaks the rules.</p>
+         <div class="task-actions"><button type="button" data-open-content>Review content</button></div>`,
+      ),
+    );
+  }
+
+  if (can.has("approve")) {
+    parts.push(
+      dialogSection(
+        "Approval",
+        `<p class="section-note">This teacher signed up and is waiting for approval.</p>
+         <div class="task-actions"><button type="button" class="primary-action" data-dialog-act="approve">Approve account</button></div>`,
+      ),
+    );
+  }
+
+  if (can.has("edit")) {
+    parts.push(
+      dialogSection(
+        "Details",
+        `<div class="dialog-fields">
+           <div><label for="dlg-name">Full name</label><input id="dlg-name" data-field="name" maxlength="100" value="${escapeHTML(user.name)}" /></div>
+           <div><label for="dlg-email">Email</label><input id="dlg-email" data-field="email" type="email" maxlength="190" value="${escapeHTML(user.email)}" /></div>
+         </div>
+         <div class="task-actions"><button type="button" data-dialog-act="edit">Save details</button></div>`,
+      ),
+    );
+  }
+
+  if (can.has("suspend") || can.has("ban") || can.has("reactivate")) {
+    const restrict = can.has("suspend") || can.has("ban");
+    parts.push(
+      dialogSection(
+        "Account status",
+        (restrict
+          ? `<div><label for="dlg-status-reason">Reason (shown to the user)</label>
+               <input id="dlg-status-reason" data-field="reason" maxlength="255" placeholder="e.g. Posting spam in class" /></div>`
+          : "") +
+          `<div class="task-actions">
+             ${can.has("suspend") ? `<button type="button" data-dialog-act="suspend">Suspend</button>` : ""}
+             ${can.has("ban") ? `<button type="button" class="btn-danger" data-dialog-act="ban">Ban</button>` : ""}
+             ${can.has("reactivate") ? `<button type="button" class="primary-action" data-dialog-act="reactivate">Reactivate</button>` : ""}
+           </div>
+           <p class="section-note">Suspend is temporary; ban is for serious cases. Both sign the user out at once.</p>`,
+      ),
+    );
+  }
+
+  if (can.has("reset_password")) {
+    parts.push(
+      dialogSection(
+        "Password",
+        `<div><label for="dlg-reset-reason">Reason</label>
+           <input id="dlg-reset-reason" data-field="reason" maxlength="255" placeholder="e.g. Forgot password, asked in person" /></div>
+         <div class="task-actions"><button type="button" data-dialog-act="reset_password">Reset password</button></div>
+         <p class="section-note">Creates a temporary password. They are signed out and must choose a new one when they next sign in.</p>`,
+      ),
+    );
+  }
+
+  if (can.has("change_role")) {
+    const options = (usersState.viewer?.assignableRoles ?? [])
+      .map(
+        (role) =>
+          `<option value="${escapeHTML(role.value)}" ${role.value === user.role ? "selected" : ""}>${escapeHTML(role.label)}</option>`,
+      )
+      .join("");
+    parts.push(
+      dialogSection(
+        "Role",
+        `<div class="dialog-fields">
+           <div><label for="dlg-role">Role</label><select id="dlg-role" data-field="role">${options}</select></div>
+           <div><label for="dlg-role-reason">Note (optional)</label><input id="dlg-role-reason" data-field="reason" maxlength="200" /></div>
+         </div>
+         <div class="task-actions"><button type="button" data-dialog-act="change_role">Change role</button></div>`,
+      ),
+    );
+  }
+
+  if (can.has("delete")) {
+    parts.push(
+      dialogSection(
+        "Delete account",
+        `<p class="section-note">Permanently deletes this account and all of its tasks, classes and notes. The logs are kept. This can't be undone.</p>
+         <div class="dialog-fields">
+           <div><label for="dlg-delete-reason">Reason</label><input id="dlg-delete-reason" data-field="reason" maxlength="255" /></div>
+           <div><label for="dlg-delete-confirm">Type <strong>${escapeHTML(user.email)}</strong> to confirm</label>
+             <input id="dlg-delete-confirm" data-field="confirmEmail" autocomplete="off" spellcheck="false" /></div>
+         </div>
+         <div class="task-actions"><button type="button" class="btn-danger" data-dialog-act="delete">Delete account</button></div>`,
+        "danger-zone",
+      ),
+    );
+  }
+
+  document.querySelector("#user-dialog-content").innerHTML = parts.join("");
+}
+
+function openUserDialog(id) {
+  const user = usersState.users.find((u) => u.id === id);
+  if (!user || !userDialog) return;
+  dialogUserId = id;
+  setFormMessage("#user-dialog-message", "");
+  renderUserDialog(user);
+  if (!userDialog.open) userDialog.showModal();
+}
+
+// Show a temporary password once, with a copy button.
+function secretBox(password) {
+  return `<div class="secret-box">
+      <code id="secret-value">${escapeHTML(password)}</code>
+      <button type="button" data-copy-secret>Copy</button>
+    </div>`;
+}
+
+document.addEventListener("click", async (event) => {
+  // Copy a temporary password.
+  const copy = event.target.closest("[data-copy-secret]");
+  if (copy) {
+    const value = copy.parentElement.querySelector("code")?.textContent ?? "";
+    try {
+      await navigator.clipboard.writeText(value);
+      copy.textContent = "Copied";
+    } catch {
+      window.getSelection()?.selectAllChildren(copy.parentElement.querySelector("code"));
+      copy.textContent = "Press Ctrl+C";
+    }
+    return;
+  }
+
+  // Close buttons inside dialogs.
+  const close = event.target.closest("[data-close-dialog]");
+  if (close) close.closest("dialog")?.close();
+});
+
+// Clicking the dark backdrop closes a dialog.
+document.querySelectorAll(".admin-dialog").forEach((dialog) => {
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+});
+
+async function runUserAction(id, act, section) {
+  const field = (name) => section?.querySelector(`[data-field="${name}"]`)?.value ?? "";
+  const requests = {
+    approve: { action: "approve" },
+    edit: { action: "edit_user", name: field("name").trim(), email: field("email").trim() },
+    suspend: { action: "set_status", status: "suspended", reason: field("reason") },
+    ban: { action: "set_status", status: "banned", reason: field("reason") },
+    reactivate: { action: "set_status", status: "active" },
+    reset_password: { action: "reset_password", reason: field("reason") },
+    change_role: { action: "change_role", role: field("role"), reason: field("reason") },
+    delete: { action: "delete_user", reason: field("reason"), confirmEmail: field("confirmEmail") },
+  };
+  const body = requests[act];
+  if (!body) return null;
+  return postAdmin({ ...body, id });
+}
+
+document.querySelector("#user-dialog-content")?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-dialog-act]");
+  if (!button || dialogUserId === null) return;
+  const act = button.dataset.dialogAct;
+  const section = button.closest(".dialog-section");
+
+  button.disabled = true;
+  try {
+    const data = await runUserAction(dialogUserId, act, section);
+    if (!data?.ok) {
+      setFormMessage("#user-dialog-message", data?.message ?? "Something went wrong.", true);
+      if (data?.field) section?.querySelector(`[data-field="${data.field}"]`)?.focus();
+      return;
+    }
+
+    if (act === "delete") {
+      userDialog.close();
+      setFormMessage("#users-message", data.message);
+      await refreshAfterUserChange();
+      return;
+    }
+
+    await refreshAfterUserChange();
+    const fresh = usersState.users.find((u) => u.id === dialogUserId);
+    if (fresh) renderUserDialog(fresh);
+    setFormMessage("#user-dialog-message", data.message);
+
+    // Temporary password: show it once, right under the message.
+    if (data.temporaryPassword) {
+      document
+        .querySelector("#user-dialog-message")
+        .insertAdjacentHTML("afterend", `<div id="user-dialog-secret">${secretBox(data.temporaryPassword)}</div>`);
+    }
+  } catch {
+    setFormMessage("#user-dialog-message", "Could not reach the server. Nothing was changed.", true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+// Forget a shown temporary password when the dialog closes.
+userDialog?.addEventListener("close", () => {
+  document.querySelector("#user-dialog-secret")?.remove();
+  dialogUserId = null;
+});
+
+/* ----- Table: approve, manage, paging ----- */
+
+document.querySelector("#users-table-body")?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-user-act]");
+  if (!button) return;
+  const id = Number(button.dataset.id);
+
+  if (button.dataset.userAct === "manage") {
+    openUserDialog(id);
+    return;
+  }
+  if (button.dataset.userAct === "approve") {
+    button.disabled = true;
+    const data = await runUserAction(id, "approve");
+    setFormMessage("#users-message", data?.message ?? "Something went wrong.", !data?.ok);
+    await refreshAfterUserChange();
+  }
+});
+
+document.querySelector("#users-pagination")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-users-page]");
+  if (!button) return;
+  usersState.page = Number(button.dataset.usersPage);
+  loadUsers();
+});
+
+/* ----- Filters ----- */
+
+const usersFilters = document.querySelector("#users-filters");
+if (usersFilters) {
+  let searchTimer = null;
+  usersFilters.addEventListener("submit", (event) => event.preventDefault());
+  usersFilters.addEventListener("input", (event) => {
+    if (event.target.name !== "search") return;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      usersState.search = event.target.value.trim();
+      usersState.page = 1;
+      loadUsers();
+    }, 250);
+  });
+  usersFilters.addEventListener("change", (event) => {
+    if (event.target.name === "role" || event.target.name === "status") {
+      usersState[event.target.name] = event.target.value;
+      usersState.page = 1;
+      loadUsers();
+    }
+  });
+}
+
+function showPendingUsers() {
+  usersState.status = "pending";
+  usersState.page = 1;
+  const select = document.querySelector("#users-status");
+  if (select) select.value = "pending";
+  if (!goToSection("users")) return;
+}
+
+document.querySelector("#users-show-pending")?.addEventListener("click", () => {
+  showPendingUsers(); // goToSection fires section:shown, which reloads the list
+});
+document.querySelector("#admin-review-pending")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  showPendingUsers(); // goToSection fires section:shown, which loads the list
+});
+
+document.addEventListener("section:shown", (event) => {
+  if (event.detail === "users") loadUsers();
+});
+
+/* ----- Create account (Super Admin) ----- */
+
+const createDialog = document.querySelector("#user-create-dialog");
+const createForm = document.querySelector("#user-create-form");
+
+document.querySelector("#users-create-btn")?.addEventListener("click", () => {
+  if (!createDialog || !createForm) return;
+  createForm.reset();
+  createForm.hidden = false;
+  document.querySelector("#user-create-result").hidden = true;
+  setFormMessage("#user-create-message", "");
+  createForm.elements.role.innerHTML = (usersState.viewer?.assignableRoles ?? [])
+    .map((role) => `<option value="${escapeHTML(role.value)}">${escapeHTML(role.label)}</option>`)
+    .join("");
+  createDialog.showModal();
+});
+
+createForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = createForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const data = await postAdmin({
+      action: "create_user",
+      name: createForm.elements.name.value.trim(),
+      email: createForm.elements.email.value.trim(),
+      role: createForm.elements.role.value,
+    });
+    if (!data.ok) {
+      setFormMessage("#user-create-message", data.message, true);
+      if (data.field) createForm.elements[data.field]?.focus();
+      return;
+    }
+    createForm.hidden = true;
+    setFormMessage("#user-create-message", data.message);
+    const result = document.querySelector("#user-create-result");
+    result.innerHTML = secretBox(data.temporaryPassword);
+    result.hidden = false;
+    await refreshAfterUserChange();
+  } catch {
+    setFormMessage("#user-create-message", "Could not reach the server. Nothing was changed.", true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+// Forget the shown password when the create dialog closes.
+createDialog?.addEventListener("close", () => {
+  const result = document.querySelector("#user-create-result");
+  if (result) result.innerHTML = "";
+});
+
+/* ---------- Announcements on dashboards (every role) ----------
+   Text only (escaped), newest/important first. Dismissing remembers the
+   announcement's version, so an edited announcement shows again. */
+
+const DISMISSED_KEY = `studyhub-dismissed-announcements-${currentUser?.id ?? "guest"}`;
+
+function readDismissed() {
+  try {
+    return JSON.parse(localStorage.getItem(DISMISSED_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function renderAnnouncements() {
+  const dismissed = readDismissed();
+  const visible = (window.STUDYHUB_ANNOUNCEMENTS ?? []).filter(
+    (a) => dismissed[a.id] !== a.version,
+  );
+  const html = visible
+    .map(
+      (a) => `<div class="announcement" data-importance="${a.importance === "important" ? "important" : "info"}" role="note">
+        <svg class="icon" aria-hidden="true"><use href="#${a.importance === "important" ? "i-alert" : "i-megaphone"}" /></svg>
+        <div class="announcement-text">
+          <strong>${a.importance === "important" ? '<span class="sr-only">Important: </span>' : ""}${escapeHTML(a.title)}</strong>
+          <p>${escapeHTML(a.body)}</p>
+        </div>
+        <button type="button" class="announcement-dismiss" data-dismiss-announcement="${a.id}" aria-label="Dismiss announcement: ${escapeHTML(a.title)}">
+          <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
+        </button>
+      </div>`,
+    )
+    .join("");
+  document.querySelectorAll(".announcements").forEach((box) => {
+    box.innerHTML = html;
+  });
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-dismiss-announcement]");
+  if (!button) return;
+  const id = Number(button.dataset.dismissAnnouncement);
+  const announcement = (window.STUDYHUB_ANNOUNCEMENTS ?? []).find((a) => a.id === id);
+  if (!announcement) return;
+  const dismissed = readDismissed();
+  dismissed[id] = announcement.version;
+  try {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissed));
+  } catch {
+    /* storage blocked: it just hides for this visit */
+  }
+  renderAnnouncements();
+});
+
+renderAnnouncements();
+
+/* ---------- Admin Settings: announcements, sign-ups, backup ----------
+   Sign-ups + backup cards are Super Admin only (the server refuses others). */
+
+const annForm = document.querySelector("#ann-form");
+let annItems = [];
+let annConfirmDelete = null;
+
+const ANN_STATE_LABELS = { live: "Live", scheduled: "Scheduled", ended: "Ended" };
+const ANN_AUDIENCE_LABELS = { all: "Everyone", student: "Students", teacher: "Teachers" };
+
+// "2026-12-01 08:00:00" -> "2026-12-01T08:00" for <input type="datetime-local">
+const toLocalInput = (value) => (value ? String(value).replace(" ", "T").slice(0, 16) : "");
+
+function renderAnnouncementList() {
+  const list = document.querySelector("#ann-list");
+  if (!list) return;
+  if (!annItems.length) {
+    list.innerHTML = `<li class="content-empty">No announcements yet.</li>`;
+    return;
+  }
+  list.innerHTML = annItems
+    .map((a) => {
+      const window_ = [
+        a.startsAt ? `from ${formatAccountDate(a.startsAt, true)}` : "",
+        a.endsAt ? `until ${formatAccountDate(a.endsAt, true)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const meta = [ANN_AUDIENCE_LABELS[a.audience], a.importance === "important" ? "Important" : "", window_, `by ${a.author}`]
+        .filter(Boolean)
+        .join(" · ");
+      const confirming = annConfirmDelete === a.id;
+      return `<li class="content-item">
+        <div class="content-main">
+          <strong>${escapeHTML(a.title)} <span class="ann-state" data-state="${escapeHTML(a.state)}">${escapeHTML(ANN_STATE_LABELS[a.state] ?? a.state)}</span></strong>
+          <span class="content-meta">${escapeHTML(meta)}</span>
+          <p class="content-body">${escapeHTML(a.body)}</p>
+        </div>
+        <div class="task-actions">
+          <button type="button" data-ann-edit="${a.id}">Edit</button>
+          <button type="button" class="${confirming ? "btn-danger" : ""}" data-ann-delete="${a.id}">${confirming ? "Confirm delete" : "Delete"}</button>
+        </div>
+      </li>`;
+    })
+    .join("");
+}
+
+async function loadAnnouncementsAdmin() {
+  const data = await postAdmin({ action: "list_announcements" });
+  if (!data.ok) return setFormMessage("#ann-message", data.message, true);
+  annItems = data.announcements;
+  renderAnnouncementList();
+}
+
+function openAnnouncementForm(item = null) {
+  if (!annForm) return;
+  annForm.reset();
+  annForm.elements.id.value = item?.id ?? "";
+  annForm.elements.title.value = item?.title ?? "";
+  annForm.elements.body.value = item?.body ?? "";
+  annForm.elements.audience.value = item?.audience ?? "all";
+  annForm.elements.importance.value = item?.importance ?? "info";
+  annForm.elements.startsAt.value = toLocalInput(item?.startsAt);
+  annForm.elements.endsAt.value = toLocalInput(item?.endsAt);
+  annForm.hidden = false;
+  setFormMessage("#ann-message", "");
+  annForm.elements.title.focus();
+}
+
+document.querySelector("#ann-new")?.addEventListener("click", () => openAnnouncementForm());
+document.querySelector("#ann-cancel")?.addEventListener("click", () => {
+  annForm.hidden = true;
+});
+
+annForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const f = annForm.elements;
+  const button = annForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const data = await postAdmin({
+      action: "save_announcement",
+      id: Number(f.id.value) || 0,
+      title: f.title.value.trim(),
+      body: f.body.value.trim(),
+      audience: f.audience.value,
+      importance: f.importance.value,
+      startsAt: f.startsAt.value,
+      endsAt: f.endsAt.value,
+    });
+    if (!data.ok) {
+      setFormMessage("#ann-message", data.message, true);
+      if (data.field) f[data.field]?.focus();
+      return;
+    }
+    annForm.hidden = true;
+    setFormMessage("#ann-message", data.message);
+    await loadAnnouncementsAdmin();
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.querySelector("#ann-list")?.addEventListener("click", async (event) => {
+  const edit = event.target.closest("[data-ann-edit]");
+  if (edit) {
+    openAnnouncementForm(annItems.find((a) => a.id === Number(edit.dataset.annEdit)));
+    return;
+  }
+  const del = event.target.closest("[data-ann-delete]");
+  if (!del) return;
+  const id = Number(del.dataset.annDelete);
+  if (annConfirmDelete !== id) {
+    // First click arms it; second click deletes.
+    annConfirmDelete = id;
+    renderAnnouncementList();
+    document.querySelector(`[data-ann-delete="${id}"]`)?.focus();
+    return;
+  }
+  annConfirmDelete = null;
+  const data = await postAdmin({ action: "delete_announcement", id });
+  setFormMessage("#ann-message", data.message, !data.ok);
+  await loadAnnouncementsAdmin();
+});
+
+const signupForm = document.querySelector("#signup-settings-form");
+
+async function loadGlobalSettings() {
+  const data = await postAdmin({ action: "get_settings" });
+  if (!data.ok || !signupForm) return;
+  signupForm.elements.allowSignups.checked = data.settings.allowSignups;
+  signupForm.elements.allowTeacherSignups.checked = data.settings.allowTeacherSignups;
+}
+
+signupForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = await postAdmin({
+    action: "save_settings",
+    allowSignups: signupForm.elements.allowSignups.checked,
+    allowTeacherSignups: signupForm.elements.allowTeacherSignups.checked,
+  });
+  setFormMessage("#signup-settings-message", data.message, !data.ok);
+});
+
+if (document.querySelector("#admin-settings")) {
+  const isSuper = currentUser?.role === "super_admin";
+  document.querySelector("#signup-settings").hidden = !isSuper;
+  document.querySelector("#backup-settings").hidden = !isSuper;
+  document.addEventListener("section:shown", (event) => {
+    if (event.detail !== "admin-settings") return;
+    loadAnnouncementsAdmin();
+    if (isSuper) loadGlobalSettings();
+  });
+}
+
+/* ---------- Moderation: review one user's content ----------
+   View + remove with a reason, never edit. The server checks rank, ownership
+   of each item, logs the viewing, and tells the owner about each removal. */
+
+const contentDialog = document.querySelector("#content-dialog");
+const contentState = { userId: 0, canDelete: false, tab: "tasks", data: null, confirming: null };
+
+function contentItemHTML(kind, item) {
+  const confirming = contentState.confirming === `${kind}:${item.id}`;
+  let title = "";
+  let meta = "";
+  let body = "";
+  if (kind === "tasks") {
+    title = item.title;
+    meta = [item.subject, item.status, item.priority + " priority", item.dueDate ? `Due ${item.dueDate}` : ""]
+      .filter(Boolean)
+      .join(" · ");
+    body = item.description;
+  } else if (kind === "classes") {
+    title = item.title;
+    meta = [`${item.day} ${item.time}`, item.courseCode, item.instructor].filter(Boolean).join(" · ");
+  } else {
+    title = item.title;
+    meta = item.remark ? `Reminder: ${item.remark}` : "";
+    body = item.body;
+  }
+
+  const action = !contentState.canDelete
+    ? ""
+    : confirming
+      ? `<div class="content-confirm">
+           <label for="content-reason">Reason (the owner will see it)</label>
+           <input id="content-reason" data-content-reason maxlength="255" placeholder="e.g. Offensive language" />
+           <div class="task-actions">
+             <button type="button" data-content-cancel>Cancel</button>
+             <button type="button" class="btn-danger" data-content-remove="${kind}:${item.id}">Remove</button>
+           </div>
+         </div>`
+      : `<button type="button" class="content-remove-btn" data-content-ask="${kind}:${item.id}">Remove</button>`;
+
+  return `<li class="content-item${confirming ? " is-confirming" : ""}">
+      <div class="content-main">
+        <strong>${escapeHTML(title)}</strong>
+        ${meta ? `<span class="content-meta">${escapeHTML(meta)}</span>` : ""}
+        ${body ? `<p class="content-body">${escapeHTML(body)}</p>` : ""}
+      </div>
+      ${action}
+    </li>`;
+}
+
+function renderContentList() {
+  const data = contentState.data;
+  if (!data) return;
+  ["tasks", "classes", "notes"].forEach((kind) => {
+    const count = contentDialog.querySelector(`[data-count="${kind}"]`);
+    if (count) count.textContent = `(${data[kind].length})`;
+  });
+  contentDialog.querySelectorAll("[data-content-tab]").forEach((tab) => {
+    tab.setAttribute("aria-selected", String(tab.dataset.contentTab === contentState.tab));
+  });
+  const items = data[contentState.tab];
+  const empty = { tasks: "No tasks.", classes: "No classes.", notes: "No notes." }[contentState.tab];
+  document.querySelector("#content-list").innerHTML = items.length
+    ? items.map((item) => contentItemHTML(contentState.tab, item)).join("")
+    : `<li class="content-empty">${empty}</li>`;
+  contentDialog.querySelector("[data-content-reason]")?.focus();
+}
+
+async function openContentDialog(user) {
+  if (!contentDialog) return;
+  contentState.userId = user.id;
+  contentState.canDelete = user.can.includes("delete_content");
+  contentState.tab = "tasks";
+  contentState.confirming = null;
+  contentState.data = null;
+  setLabel("#content-dialog-title", `${user.name}'s content`);
+  setFormMessage("#content-dialog-message", "Loading…");
+  document.querySelector("#content-list").innerHTML = "";
+  contentDialog.showModal();
+
+  const data = await postAdmin({ action: "user_content", id: user.id });
+  if (!data.ok) {
+    setFormMessage("#content-dialog-message", data.message, true);
+    return;
+  }
+  setFormMessage("#content-dialog-message", "");
+  contentState.data = data;
+  renderContentList();
+}
+
+contentDialog?.addEventListener("click", async (event) => {
+  const tab = event.target.closest("[data-content-tab]");
+  if (tab) {
+    contentState.tab = tab.dataset.contentTab;
+    contentState.confirming = null;
+    renderContentList();
+    return;
+  }
+  const ask = event.target.closest("[data-content-ask]");
+  if (ask) {
+    contentState.confirming = ask.dataset.contentAsk;
+    setFormMessage("#content-dialog-message", "");
+    renderContentList();
+    return;
+  }
+  if (event.target.closest("[data-content-cancel]")) {
+    contentState.confirming = null;
+    renderContentList();
+    return;
+  }
+  const remove = event.target.closest("[data-content-remove]");
+  if (!remove) return;
+
+  const [kind, rawId] = remove.dataset.contentRemove.split(":");
+  const itemId = Number(rawId);
+  const reason = contentDialog.querySelector("[data-content-reason]")?.value ?? "";
+  remove.disabled = true;
+  const data = await postAdmin({
+    action: "delete_content",
+    id: contentState.userId,
+    type: { tasks: "task", classes: "class", notes: "note" }[kind],
+    itemId,
+    reason,
+  });
+  if (!data.ok) {
+    remove.disabled = false;
+    setFormMessage("#content-dialog-message", data.message, true);
+    contentDialog.querySelector("[data-content-reason]")?.focus();
+    return;
+  }
+  // Drop it locally (re-fetching would log another "viewed" entry).
+  contentState.data[kind] = contentState.data[kind].filter((item) => item.id !== itemId);
+  contentState.confirming = null;
+  renderContentList();
+  setFormMessage("#content-dialog-message", data.message);
+  loadAdminReports();
+});
+
+// Manage dialog -> Review content.
+document.querySelector("#user-dialog-content")?.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-open-content]")) return;
+  const user = usersState.users.find((u) => u.id === dialogUserId);
+  userDialog.close();
+  if (user) openContentDialog(user);
+});
+
+/* ---------- Logs (Admin / Super Admin) ----------
+   Activity = what people did (tasks, classes, notes, imports).
+   Security = sign-ins and account changes; Super Admin only (server-enforced). */
+
+const isSuperAdmin = currentUser?.role === "super_admin";
+const logsState = { tab: "activity", search: "", type: "", period: "7", page: 1, userId: 0, userName: "" };
+
+const ACTIVITY_LABELS = {
+  CREATE: "Created",
+  UPDATE: "Edited",
+  DELETE: "Deleted",
+  STATUS_CHANGE: "Changed status",
+  ARCHIVE: "Archived",
+  IMPORT: "Imported a backup",
+  RESET: "Reset their data",
+  MODERATION_DELETE: "Removed by an admin",
+};
+// (announcement + settings events are added to SECURITY_LABELS below)
+const SECURITY_LABELS = {
+  LOGIN: "Signed in",
+  LOGOUT: "Signed out",
+  SIGNUP: "Signed up",
+  LOGIN_FAILED: "Failed sign-in",
+  LOGIN_BLOCKED: "Blocked sign-in",
+  LOGIN_LOCKED: "Locked out",
+  SESSION_ENDED: "Signed out automatically",
+  PERMISSION_DENIED: "Refused action",
+  NAME_CHANGED: "Changed name",
+  EMAIL_CHANGED: "Changed email",
+  PASSWORD_CHANGED: "Changed password",
+  PASSWORD_CHECK_FAILED: "Wrong current password",
+  PASSWORD_RESET: "Password reset",
+  USER_APPROVED: "Account approved",
+  STATUS_CHANGE: "Status changed",
+  ROLE_CHANGE: "Role changed",
+  USER_EDITED: "Account edited",
+  USER_CREATED: "Account created",
+  USER_DELETED: "Account deleted",
+  CONTENT_VIEWED: "Content reviewed",
+  CONTENT_DELETED: "Content removed",
+  ANNOUNCEMENT_SAVED: "Announcement saved",
+  ANNOUNCEMENT_DELETED: "Announcement removed",
+  SETTINGS_CHANGED: "Settings changed",
+  BACKUP_DOWNLOADED: "Backup downloaded",
+};
+// Events worth a second look get a warning tint (always with their text label).
+const ALERT_EVENTS = new Set([
+  "LOGIN_FAILED",
+  "LOGIN_BLOCKED",
+  "LOGIN_LOCKED",
+  "PERMISSION_DENIED",
+  "PASSWORD_CHECK_FAILED",
+]);
+
+function personCell(person) {
+  if (!person) return `<span class="muted-cell">Not signed in</span>`;
+  return `<span class="person"><strong>${escapeHTML(person.name)}</strong>${
+    person.email ? `<span class="user-email">${escapeHTML(person.email)}</span>` : ""
+  }</span>`;
+}
+
+function logTime(value) {
+  const date = new Date(String(value).replace(" ", "T"));
+  return `<time datetime="${escapeHTML(value)}" title="${escapeHTML(date.toLocaleString())}">${escapeHTML(
+    date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+  )}</time>`;
+}
+
+// "task TASK-41" -> "Task TASK-41"; whole-app actions (imports, resets) -> "All data".
+function logItem(target) {
+  const text = String(target ?? "").trim();
+  if (!text || text.startsWith("app ")) return "All data";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function renderLogRows(rows) {
+  const head = document.querySelector("#logs-head");
+  const body = document.querySelector("#logs-body");
+  if (logsState.tab === "activity") {
+    head.innerHTML = "<tr><th>When</th><th>Who</th><th>Action</th><th>Item</th><th>Details</th></tr>";
+    body.innerHTML = rows
+      .map(
+        (r) => `<tr>
+          <td class="nowrap">${logTime(r.time)}</td>
+          <td>${personCell(r.user)}</td>
+          <td class="nowrap">${escapeHTML(ACTIVITY_LABELS[r.type] ?? r.type)}</td>
+          <td class="nowrap">${escapeHTML(logItem(r.target))}</td>
+          <td class="log-details">${escapeHTML(r.details ?? "")}</td>
+        </tr>`,
+      )
+      .join("");
+  } else {
+    // IP sits under the time: six columns don't fit beside the sidebar.
+    head.innerHTML = "<tr><th>When</th><th>Event</th><th>By</th><th>Account</th><th>Details</th></tr>";
+    body.innerHTML = rows
+      .map(
+        (r) => `<tr>
+          <td class="nowrap">${logTime(r.time)}${r.ip ? `<span class="log-ip" title="IP address">${escapeHTML(r.ip)}</span>` : ""}</td>
+          <td><span class="log-event" data-tone="${ALERT_EVENTS.has(r.type) ? "alert" : "neutral"}">${escapeHTML(SECURITY_LABELS[r.type] ?? r.type)}</span></td>
+          <td>${personCell(r.actor)}</td>
+          <td>${personCell(r.target)}</td>
+          <td class="log-details">${escapeHTML(r.details ?? "")}</td>
+        </tr>`,
+      )
+      .join("");
+  }
+}
+
+async function loadLogs() {
+  if (!document.querySelector("#logs-body")) return;
+  const data = await postAdmin({
+    action: logsState.tab === "activity" ? "activity_log" : "security_log",
+    search: logsState.search,
+    type: logsState.type,
+    period: logsState.period,
+    userId: logsState.userId,
+    page: logsState.page,
+  });
+  const message = document.querySelector("#logs-message");
+  if (!data.ok) {
+    message.textContent = data.message;
+    message.hidden = false;
+    return;
+  }
+  message.hidden = true;
+  logsState.page = data.page;
+
+  renderLogRows(data.rows);
+  document.querySelector("#logs-empty").hidden = data.rows.length > 0;
+  setLabel("#logs-count", `${data.total} entr${data.total === 1 ? "y" : "ies"}`);
+
+  // Type filter: the types that actually occur, with readable names.
+  const labels = logsState.tab === "activity" ? ACTIVITY_LABELS : SECURITY_LABELS;
+  document.querySelector("#logs-type").innerHTML =
+    `<option value="">All types</option>` +
+    data.types
+      .map(
+        (t) =>
+          `<option value="${escapeHTML(t)}" ${t === logsState.type ? "selected" : ""}>${escapeHTML(labels[t] ?? t)}</option>`,
+      )
+      .join("");
+
+  document.querySelector("#logs-pagination").innerHTML =
+    data.pages > 1
+      ? `<button type="button" data-logs-page="${data.page - 1}" ${data.page <= 1 ? "disabled" : ""}>Previous</button>
+         <span>Page ${data.page} of ${data.pages}</span>
+         <button type="button" data-logs-page="${data.page + 1}" ${data.page >= data.pages ? "disabled" : ""}>Next</button>`
+      : "";
+}
+
+function setLogTab(tab) {
+  logsState.tab = tab === "security" && isSuperAdmin ? "security" : "activity";
+  logsState.type = "";
+  logsState.page = 1;
+  document.querySelectorAll("[data-log-tab]").forEach((button) => {
+    button.setAttribute("aria-selected", String(button.dataset.logTab === logsState.tab));
+  });
+  setLabel(
+    "#logs-scope-note",
+    logsState.tab === "security"
+      ? "Sign-ins, failed sign-ins and every change to an account. Only Super Admins can see this log."
+      : isSuperAdmin
+        ? "What everyone did with their tasks, classes and notes."
+        : "What students and teachers did with their tasks, classes and notes.",
+  );
+  setLabel("#logs-caption", logsState.tab === "security" ? "Security log" : "Activity log");
+}
+
+function setLogUser(id, name) {
+  logsState.userId = id || 0;
+  logsState.userName = name || "";
+  logsState.page = 1;
+  document.querySelector("#logs-user-filter").hidden = !logsState.userId;
+  setLabel("#logs-user-name", logsState.userName);
+}
+
+// Open the Logs page on a given tab, optionally for one person.
+function openLogs(tab, userId = 0, userName = "") {
+  setLogTab(tab);
+  setLogUser(userId, userName);
+  if (userId) {
+    // A person's history is more useful without the 7-day limit.
+    logsState.period = "";
+    const period = document.querySelector("#logs-period");
+    if (period) period.value = "";
+  }
+  goToSection("logs"); // fires section:shown -> loadLogs()
+}
+
+if (document.querySelector("#logs")) {
+  document.querySelector("#logs-tab-security").hidden = !isSuperAdmin;
+  setLogTab("activity");
+
+  document.querySelector(".log-tabs")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-log-tab]");
+    if (!button) return;
+    setLogTab(button.dataset.logTab);
+    loadLogs();
+  });
+
+  const logsFilters = document.querySelector("#logs-filters");
+  let logsSearchTimer = null;
+  logsFilters.addEventListener("submit", (event) => event.preventDefault());
+  logsFilters.addEventListener("input", (event) => {
+    if (event.target.name !== "search") return;
+    clearTimeout(logsSearchTimer);
+    logsSearchTimer = setTimeout(() => {
+      logsState.search = event.target.value.trim();
+      logsState.page = 1;
+      loadLogs();
+    }, 250);
+  });
+  logsFilters.addEventListener("change", (event) => {
+    if (event.target.name === "type" || event.target.name === "period") {
+      logsState[event.target.name] = event.target.value;
+      logsState.page = 1;
+      loadLogs();
+    }
+  });
+
+  document.querySelector("#logs-clear-user")?.addEventListener("click", () => {
+    setLogUser(0, "");
+    loadLogs();
+  });
+  document.querySelector("#logs-pagination")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-logs-page]");
+    if (!button) return;
+    logsState.page = Number(button.dataset.logsPage);
+    loadLogs();
+  });
+  document.querySelector("#report-open-security")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    openLogs("security");
+  });
+
+  // Manage dialog -> this person's history.
+  document.querySelector("#user-dialog")?.addEventListener("click", (event) => {
+    const link = event.target.closest("[data-open-log]");
+    if (!link) return;
+    const user = usersState.users.find((u) => u.id === dialogUserId);
+    userDialog.close();
+    if (user) openLogs(link.dataset.openLog, user.id, user.name);
+  });
+
+  document.addEventListener("section:shown", (event) => {
+    if (event.detail === "logs") loadLogs();
+  });
+}
 
 const archivesDialog = document.querySelector("#archives-dialog");
 const openArchivesButton = document.querySelector("#open-archives");

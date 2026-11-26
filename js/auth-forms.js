@@ -7,9 +7,51 @@
   const box = document.querySelector("#auth-message");
   const button = form.querySelector('button[type="submit"]');
 
-  function show(text) {
+  // type: "error" (default) or "info" (neutral, e.g. "waiting for approval")
+  function show(text, type = "error") {
     box.textContent = text;
     box.hidden = !text;
+    box.classList.toggle("is-info", type === "info");
+  }
+
+  /* Why the user landed on the login page (set by the server, see
+     includes/auth.php). Only known codes are shown; anything else is ignored. */
+  const NOTICES = {
+    suspended:
+      "Your account has been suspended. Log in to see the reason, or contact an administrator.",
+    banned: "This account has been banned.",
+    pending: "Your account is waiting for an administrator to approve it.",
+    signed_out: "You were signed out. Please log in again.",
+  };
+  const notice = new URLSearchParams(location.search).get("notice");
+  if (mode === "login" && Object.hasOwn(NOTICES, notice ?? "")) {
+    show(NOTICES[notice], notice === "signed_out" || notice === "pending" ? "info" : "error");
+  }
+
+  /* Sign-up page: reflect the Super Admin's switches (the server enforces
+     them anyway; this just avoids filling in a form that will be refused). */
+  if (mode === "signup") {
+    fetch("api/signup.php")
+      .then((res) => res.json())
+      .then((open) => {
+        if (!open.allowSignups) {
+          form.hidden = true;
+          show("Sign-ups are closed right now. Ask an administrator for an account.", "info");
+          return;
+        }
+        if (!open.allowTeacherSignups) {
+          const teacher = form.querySelector('input[name="role"][value="teacher"]');
+          if (teacher) {
+            teacher.disabled = true;
+            teacher.closest(".role-option")?.classList.add("is-disabled");
+            const label = teacher.nextElementSibling;
+            if (label) label.textContent = "Teacher (closed)";
+          }
+        }
+      })
+      .catch(() => {
+        /* if this check fails, the server still decides on submit */
+      });
   }
 
   form.addEventListener("submit", async (event) => {
@@ -37,6 +79,12 @@
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) return show(out.error || "Something went wrong. Please try again.");
+
+      // Teacher signups wait for approval: stay here and explain.
+      if (out.pending) {
+        form.reset();
+        return show(out.message, "info");
+      }
       window.location.href = out.redirect || "index.php";
     } catch (err) {
       show("Cannot reach the server. Is Apache/MySQL running?");

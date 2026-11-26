@@ -5,6 +5,7 @@ require __DIR__ . '/includes/schedules.php';
 require __DIR__ . '/includes/notes.php';
 require __DIR__ . '/includes/audit.php';
 require __DIR__ . '/includes/preferences.php';
+require __DIR__ . '/includes/settings.php';
 
 $currentUser = require_login();   // not logged in -> login.html
 
@@ -17,6 +18,7 @@ $notes = get_notes_for_user($conn, (int) $currentUser['id']);
 $auditLog = get_audit_for_user($conn, (int) $currentUser['id']);
 $preferences = get_preferences_for_user($conn, (int) $currentUser['id']);
 $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUser['id']);
+$announcements = get_active_announcements($conn, $currentUser['role']);
 ?>
 <!doctype html>
 <html lang="en">
@@ -76,6 +78,11 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
         <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
         <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+        <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+        <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+        <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12"/></symbol>
         <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
       </defs>
     </svg>
@@ -121,6 +128,10 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         </summary>
         <div class="user-menu-panel">
           <p class="user-menu-role">Signed in as <span id="user-role" class="status-pill status-todo"></span></p>
+          <a href="#profile" class="user-menu-item" data-go="profile">
+            <svg class="icon" aria-hidden="true"><use href="#i-user" /></svg>
+            Profile
+          </a>
           <a href="#settings" class="user-menu-item" data-go="settings" data-view="student">
             <svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>
             Settings
@@ -139,6 +150,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
           <option value="student">Student</option>
           <option value="teacher">Teacher</option>
           <option value="admin">Admin</option>
+          <option value="super_admin">Super Admin</option>
           <option value="__clear__">Real Role (Clear Override)</option>
         </select>
       </div>
@@ -151,6 +163,10 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
     >
       <ul>
         <li data-view="admin"><a href="#admin-dashboard"><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg><span>Dashboard</span></a></li>
+        <li data-view="admin"><a href="#users"><svg class="icon" aria-hidden="true"><use href="#i-users" /></svg><span>Users</span></a></li>
+        <li data-view="admin"><a href="#logs"><svg class="icon" aria-hidden="true"><use href="#i-activity" /></svg><span>Logs</span></a></li>
+        <li data-view="admin"><a href="#admin-settings"><svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg><span>Settings</span></a></li>
+        <li data-view="admin"><a href="#system-checks"><svg class="icon" aria-hidden="true"><use href="#i-check-circle" /></svg><span>System checks</span></a></li>
         <li data-view="teacher"><a href="#teacher-dashboard"><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg><span>Dashboard</span></a></li>
         <li data-view="student">
           <a href="#dashboard" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg><span>Dashboard</span></a>
@@ -173,21 +189,405 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         aria-labelledby="admin-dashboard-title"
         hidden
       >
-        <h2 id="admin-dashboard-title">Admin dashboard</h2>
-        <div class="content-card">
-          <h3>Welcome, <span id="admin-name">Admin</span></h3>
-          <p class="section-note">
-            This is the admin workspace. Student sections are not available to
-            this role. Use the quality assurance panel below to validate the
-            application state, workflow rules, and recovery paths.
-          </p>
+        <header class="page-head">
+          <h2 id="admin-dashboard-title">Overview</h2>
+          <p class="page-sub">Welcome back, <span id="admin-name">Admin</span></p>
+        </header>
+
+        <div class="announcements" aria-label="Announcements"></div>
+
+        <!-- Filled by loadAdminOverview() in app.js from api/admin.php -->
+        <div class="admin-stats" id="admin-overview" aria-live="polite">
+          <article class="stat-card" data-stat="total">
+            <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-users" /></svg></span>
+            <h3>Accounts</h3>
+            <strong id="admin-stat-total">—</strong>
+          </article>
+          <article class="stat-card" data-stat="student">
+            <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-user" /></svg></span>
+            <h3>Students</h3>
+            <strong id="admin-stat-student">—</strong>
+          </article>
+          <article class="stat-card" data-stat="teacher">
+            <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-note" /></svg></span>
+            <h3>Teachers</h3>
+            <strong id="admin-stat-teacher">—</strong>
+          </article>
+          <article class="stat-card" data-stat="staff">
+            <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-shield" /></svg></span>
+            <h3>Admins</h3>
+            <strong id="admin-stat-staff">—</strong>
+          </article>
+          <article class="stat-card stat-attention" data-stat="pending">
+            <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-hourglass" /></svg></span>
+            <h3>Waiting for approval</h3>
+            <strong id="admin-stat-pending">—</strong>
+            <a href="#users" class="text-link stat-link" id="admin-review-pending" hidden>Review</a>
+          </article>
+          <article class="stat-card" data-stat="blocked">
+            <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert" /></svg></span>
+            <h3>Suspended or banned</h3>
+            <strong id="admin-stat-blocked">—</strong>
+          </article>
         </div>
+        <p id="admin-overview-error" class="section-note" role="alert" hidden></p>
+
+        <!-- Filled by loadAdminReports() in app.js from api/admin.php "reports" -->
+        <section class="card report-chart-card" aria-labelledby="signins-title">
+          <div class="report-chart-head">
+            <h3 id="signins-title" class="card-title">Sign-ins, last 14 days</h3>
+            <p class="card-sub" id="signins-total"></p>
+          </div>
+          <div id="signins-chart" class="bar-chart" role="img" aria-labelledby="signins-title signins-total"></div>
+          <p id="signins-empty" class="chart-empty" hidden>No sign-ins in the last 14 days.</p>
+          <details class="chart-table">
+            <summary>Show as table</summary>
+            <div class="table-wrapper">
+              <table>
+                <thead><tr><th>Day</th><th>Sign-ins</th></tr></thead>
+                <tbody id="signins-table"></tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+
+        <h3 class="report-heading">Activity</h3>
+        <div class="admin-stats report-stats">
+          <article class="stat-card"><h3>Active users (7 days)</h3><strong id="report-active7">—</strong></article>
+          <article class="stat-card"><h3>New accounts (7 days)</h3><strong id="report-new7">—</strong><small class="stat-sub" id="report-new30"></small></article>
+          <article class="stat-card"><h3>Tasks created (7 days)</h3><strong id="report-tasks7">—</strong></article>
+          <article class="stat-card"><h3>Task completion</h3><strong id="report-completion">—</strong><small class="stat-sub" id="report-tasks-total"></small></article>
+          <article class="stat-card"><h3>Classes</h3><strong id="report-classes">—</strong></article>
+          <article class="stat-card"><h3>Notes</h3><strong id="report-notes">—</strong></article>
+        </div>
+
+        <div id="report-security" hidden>
+          <div class="report-heading-row">
+            <h3 class="report-heading">Security, last 7 days</h3>
+            <a href="#logs" class="text-link" id="report-open-security">Open security log</a>
+          </div>
+          <div class="admin-stats report-stats">
+            <article class="stat-card"><h3>Failed sign-ins</h3><strong id="report-failed7">—</strong></article>
+            <article class="stat-card"><h3>Blocked sign-ins</h3><strong id="report-blocked7">—</strong><small class="stat-sub">Suspended, banned, pending or locked out</small></article>
+            <article class="stat-card"><h3>Refused admin actions</h3><strong id="report-denied7">—</strong></article>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="users"
+        data-view="admin"
+        aria-labelledby="users-title"
+        hidden
+      >
+        <header class="page-head">
+          <div>
+            <h2 id="users-title">Users</h2>
+            <p class="page-sub" id="users-count" aria-live="polite"></p>
+          </div>
+          <button type="button" id="users-create-btn" class="btn btn-primary" hidden>
+            <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+            Add account
+          </button>
+        </header>
+
+        <div id="users-pending-note" class="notice-bar" hidden>
+          <span id="users-pending-text"></span>
+          <button type="button" class="btn" id="users-show-pending">Show them</button>
+        </div>
+
+        <form id="users-filters" class="users-filters" role="search" aria-label="Filter users">
+          <div class="users-search">
+            <label for="users-search">Search</label>
+            <input id="users-search" name="search" type="search" placeholder="Name or email" autocomplete="off" />
+          </div>
+          <div>
+            <label for="users-role">Role</label>
+            <select id="users-role" name="role">
+              <option value="">All roles</option>
+              <option value="student">Students</option>
+              <option value="teacher">Teachers</option>
+              <option value="admin">Admins</option>
+              <option value="super_admin">Super Admins</option>
+            </select>
+          </div>
+          <div>
+            <label for="users-status">Status</label>
+            <select id="users-status" name="status">
+              <option value="">Any status</option>
+              <option value="active">Active</option>
+              <option value="pending">Waiting for approval</option>
+              <option value="suspended">Suspended</option>
+              <option value="banned">Banned</option>
+            </select>
+          </div>
+        </form>
+
+        <p id="users-message" class="form-message" role="status" aria-live="polite" hidden></p>
+
+        <div class="table-wrapper">
+          <table class="users-table">
+            <caption class="sr-only">Accounts</caption>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last sign-in</th>
+                <th><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="users-table-body"></tbody>
+          </table>
+        </div>
+        <p id="users-empty" class="users-empty" hidden>No accounts match these filters.</p>
+        <div id="users-pagination" class="users-pagination" aria-label="Pages"></div>
+
+        <!-- Manage one account. Filled by openUserDialog() in app.js. -->
+        <dialog id="user-dialog" class="admin-dialog" aria-labelledby="user-dialog-title">
+          <div class="dialog-body">
+            <div class="dialog-header">
+              <div>
+                <h3 id="user-dialog-title"></h3>
+                <p id="user-dialog-meta" class="section-note"></p>
+              </div>
+              <button type="button" class="btn" data-close-dialog>Close</button>
+            </div>
+            <p id="user-dialog-message" class="form-message" role="status" aria-live="polite" hidden></p>
+            <div id="user-dialog-content"></div>
+          </div>
+        </dialog>
+
+        <!-- Moderation: one user's tasks, classes and notes. Filled by openContentDialog(). -->
+        <dialog id="content-dialog" class="admin-dialog admin-dialog-wide" aria-labelledby="content-dialog-title">
+          <div class="dialog-body">
+            <div class="dialog-header">
+              <div>
+                <h3 id="content-dialog-title">Content</h3>
+                <p class="section-note">
+                  Opening this is recorded in the security log. You can remove items
+                  that break the rules, but not edit them. The owner sees a note with
+                  your reason.
+                </p>
+              </div>
+              <button type="button" class="btn" data-close-dialog>Close</button>
+            </div>
+            <p id="content-dialog-message" class="form-message" role="status" aria-live="polite" hidden></p>
+            <div class="log-tabs content-tabs" role="tablist" aria-label="Content type">
+              <button type="button" role="tab" data-content-tab="tasks" aria-selected="true">Tasks <span data-count="tasks"></span></button>
+              <button type="button" role="tab" data-content-tab="classes" aria-selected="false">Classes <span data-count="classes"></span></button>
+              <button type="button" role="tab" data-content-tab="notes" aria-selected="false">Notes <span data-count="notes"></span></button>
+            </div>
+            <ul id="content-list" class="content-list"></ul>
+          </div>
+        </dialog>
+
+        <!-- Super Admin: create an account with a temporary password. -->
+        <dialog id="user-create-dialog" class="admin-dialog" aria-labelledby="user-create-title">
+          <div class="dialog-body">
+            <div class="dialog-header">
+              <h3 id="user-create-title">Add account</h3>
+              <button type="button" class="btn" data-close-dialog>Close</button>
+            </div>
+            <p class="section-note">
+              The account gets a temporary password that you pass on. They must
+              choose their own when they first sign in.
+            </p>
+            <p id="user-create-message" class="form-message" role="status" aria-live="polite" hidden></p>
+            <form id="user-create-form" class="profile-form" novalidate>
+              <div>
+                <label for="create-name">Full name</label>
+                <input id="create-name" name="name" maxlength="100" required />
+              </div>
+              <div>
+                <label for="create-email">Email</label>
+                <input id="create-email" name="email" type="email" maxlength="190" required />
+              </div>
+              <div>
+                <label for="create-role">Role</label>
+                <select id="create-role" name="role"></select>
+              </div>
+              <div class="form-actions">
+                <button type="submit">Create account</button>
+              </div>
+            </form>
+            <div id="user-create-result" hidden></div>
+          </div>
+        </dialog>
+      </section>
+
+      <section
+        id="logs"
+        data-view="admin"
+        aria-labelledby="logs-title"
+        hidden
+      >
+        <header class="page-head">
+          <h2 id="logs-title">Logs</h2>
+          <p class="page-sub" id="logs-count" aria-live="polite"></p>
+        </header>
+
+        <div class="log-tabs" role="tablist" aria-label="Log type">
+          <button type="button" role="tab" id="logs-tab-activity" aria-selected="true" data-log-tab="activity">Activity</button>
+          <button type="button" role="tab" id="logs-tab-security" aria-selected="false" data-log-tab="security" hidden>Security</button>
+        </div>
+        <p class="section-note" id="logs-scope-note"></p>
+
+        <form id="logs-filters" class="users-filters logs-filters" role="search" aria-label="Filter log">
+          <div class="users-search">
+            <label for="logs-search">Search</label>
+            <input id="logs-search" name="search" type="search" placeholder="Name, email or details" autocomplete="off" />
+          </div>
+          <div>
+            <label for="logs-type">Type</label>
+            <select id="logs-type" name="type"><option value="">All types</option></select>
+          </div>
+          <div>
+            <label for="logs-period">When</label>
+            <select id="logs-period" name="period">
+              <option value="1">Last 24 hours</option>
+              <option value="7" selected>Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="">All time</option>
+            </select>
+          </div>
+        </form>
+
+        <p id="logs-user-filter" class="filter-chip-row" hidden>
+          Showing only <strong id="logs-user-name"></strong>
+          <button type="button" class="btn" id="logs-clear-user">Show everyone</button>
+        </p>
+        <p id="logs-message" class="form-message is-error" role="alert" hidden></p>
+
+        <div class="table-wrapper">
+          <table class="logs-table">
+            <caption class="sr-only" id="logs-caption">Log entries</caption>
+            <thead id="logs-head"></thead>
+            <tbody id="logs-body"></tbody>
+          </table>
+        </div>
+        <p id="logs-empty" class="users-empty" hidden>Nothing matches these filters.</p>
+        <div id="logs-pagination" class="users-pagination" aria-label="Pages"></div>
+      </section>
+
+      <section
+        id="admin-settings"
+        data-view="admin"
+        aria-labelledby="admin-settings-title"
+        hidden
+      >
+        <header class="page-head">
+          <h2 id="admin-settings-title">Settings</h2>
+          <p class="page-sub">App-wide settings</p>
+        </header>
+
+        <section class="content-card" aria-labelledby="ann-title">
+          <div class="card-head-row">
+            <div>
+              <h3 id="ann-title">Announcements</h3>
+              <p class="section-note">Shown at the top of people's dashboards. They can dismiss them.</p>
+            </div>
+            <button type="button" class="btn btn-primary" id="ann-new">
+              <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+              New announcement
+            </button>
+          </div>
+
+          <form id="ann-form" class="profile-form ann-form" novalidate hidden>
+            <input type="hidden" name="id" />
+            <div>
+              <label for="ann-form-title">Title</label>
+              <input id="ann-form-title" name="title" maxlength="120" required />
+            </div>
+            <div>
+              <label for="ann-form-body">Message</label>
+              <textarea id="ann-form-body" name="body" rows="3" maxlength="2000" required></textarea>
+            </div>
+            <div class="dialog-fields">
+              <div>
+                <label for="ann-form-audience">Who sees it</label>
+                <select id="ann-form-audience" name="audience">
+                  <option value="all">Everyone</option>
+                  <option value="student">Students</option>
+                  <option value="teacher">Teachers</option>
+                </select>
+              </div>
+              <div>
+                <label for="ann-form-importance">Importance</label>
+                <select id="ann-form-importance" name="importance">
+                  <option value="info">Information</option>
+                  <option value="important">Important</option>
+                </select>
+              </div>
+              <div>
+                <label for="ann-form-starts">Show from (optional)</label>
+                <input id="ann-form-starts" name="startsAt" type="datetime-local" />
+              </div>
+              <div>
+                <label for="ann-form-ends">Show until (optional)</label>
+                <input id="ann-form-ends" name="endsAt" type="datetime-local" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn" id="ann-cancel">Cancel</button>
+              <button type="submit">Save announcement</button>
+            </div>
+          </form>
+
+          <p id="ann-message" class="form-message" role="status" aria-live="polite" hidden></p>
+          <ul id="ann-list" class="content-list ann-list"></ul>
+        </section>
+
+        <section class="content-card" id="signup-settings" aria-labelledby="signup-settings-title" hidden>
+          <h3 id="signup-settings-title">Sign-ups</h3>
+          <p class="section-note">Closing sign-ups doesn't affect existing accounts. Super Admins can still add accounts on the Users page.</p>
+          <form id="signup-settings-form" class="switch-list" novalidate>
+            <label class="switch-row">
+              <input type="checkbox" name="allowSignups" />
+              <span><strong>Allow new sign-ups</strong><small>Anyone can create a student account.</small></span>
+            </label>
+            <label class="switch-row">
+              <input type="checkbox" name="allowTeacherSignups" />
+              <span><strong>Allow teacher sign-ups</strong><small>New teacher accounts still wait for approval.</small></span>
+            </label>
+            <p id="signup-settings-message" class="form-message" role="status" aria-live="polite" hidden></p>
+            <div class="form-actions">
+              <button type="submit">Save sign-up settings</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="content-card" id="backup-settings" aria-labelledby="backup-title" hidden>
+          <h3 id="backup-title">Full backup</h3>
+          <p class="section-note">
+            Downloads the whole database as a .sql file you can restore with
+            phpMyAdmin &rarr; Import. It includes everyone's data, password hashes
+            and the logs, so keep it private. Each download is recorded in the
+            security log.
+          </p>
+          <form method="post" action="api/backup.php" class="backup-form">
+            <button type="submit" class="btn">Download backup (.sql)</button>
+          </form>
+        </section>
+      </section>
+
+      <section
+        id="system-checks"
+        data-view="admin"
+        aria-labelledby="system-checks-title"
+        hidden
+      >
+        <header class="page-head">
+          <h2 id="system-checks-title">System checks</h2>
+          <p class="page-sub">Automated tests of the app's rules, run in your browser</p>
+        </header>
 
         <section id="admin-qa" class="content-card" aria-labelledby="admin-qa-title">
           <h3 id="admin-qa-title">Quality assurance</h3>
           <p class="section-note">
-            QA checks run when this dashboard loads. Run them again whenever
-            you want to refresh the results.
+            These checks run when you sign in. Run them again whenever you want
+            to refresh the results.
           </p>
           <button
             type="button"
@@ -260,6 +660,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         hidden
       >
         <h2 id="teacher-dashboard-title">Teacher Dashboard</h2>
+        <div class="announcements" aria-label="Announcements"></div>
         <div class="content-card">
           <h3>Welcome, Teacher!</h3>
           <p>Manage academic activities and monitor student progress.</p>
@@ -485,6 +886,8 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
           <h2 id="dashboard-title">Today</h2>
           <p id="dash-date" class="page-sub"></p>
         </header>
+
+        <div class="announcements dashboard-wide" aria-label="Announcements"></div>
 
         <!-- Next up: the three most urgent unfinished tasks, rendered by renderNextUp() -->
         <section id="next-up" class="card dashboard-wide" aria-labelledby="next-up-title">
@@ -1264,6 +1667,72 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
       </section>
 
       <section
+        id="profile"
+        data-view="student teacher admin"
+        aria-labelledby="profile-title"
+        hidden
+      >
+        <header class="page-head">
+          <h2 id="profile-title">Profile</h2>
+          <p class="page-sub">Signed in as <span id="profile-role">—</span></p>
+        </header>
+
+        <div class="profile-grid">
+          <section class="content-card" aria-labelledby="profile-details-title">
+            <h3 id="profile-details-title">Your details</h3>
+            <p class="section-note">Your email is also your username when you log in.</p>
+
+            <form id="profile-details-form" class="profile-form" novalidate>
+              <div>
+                <label for="profile-name">Full name</label>
+                <input id="profile-name" name="name" type="text" maxlength="100" autocomplete="name" required />
+              </div>
+              <div>
+                <label for="profile-email">Email</label>
+                <input id="profile-email" name="email" type="email" maxlength="190" autocomplete="email" required />
+              </div>
+              <div id="profile-email-password-field" hidden>
+                <label for="profile-email-password">Current password</label>
+                <input id="profile-email-password" name="currentPassword" type="password" autocomplete="current-password" aria-describedby="profile-email-password-hint" />
+                <p id="profile-email-password-hint" class="field-hint">Needed to change your email.</p>
+              </div>
+              <p id="profile-details-message" class="form-message" role="status" aria-live="polite" hidden></p>
+              <div class="form-actions">
+                <button type="submit">Save details</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="content-card" aria-labelledby="profile-password-title">
+            <h3 id="profile-password-title">Change password</h3>
+            <p id="profile-password-note" class="section-note">
+              Changing your password signs you out on every other device.
+            </p>
+
+            <form id="profile-password-form" class="profile-form" novalidate>
+              <div>
+                <label for="profile-current-password">Current password</label>
+                <input id="profile-current-password" name="currentPassword" type="password" autocomplete="current-password" required />
+              </div>
+              <div>
+                <label for="profile-new-password">New password</label>
+                <input id="profile-new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required aria-describedby="profile-new-password-hint" />
+                <p id="profile-new-password-hint" class="field-hint">At least 8 characters.</p>
+              </div>
+              <div>
+                <label for="profile-confirm-password">Confirm new password</label>
+                <input id="profile-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" required />
+              </div>
+              <p id="profile-password-message" class="form-message" role="status" aria-live="polite" hidden></p>
+              <div class="form-actions">
+                <button type="submit">Change password</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section
         id="settings"
         data-view="student"
         aria-labelledby="settings-title"
@@ -1411,7 +1880,9 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
       window.STUDYHUB_USER = <?= json_encode([
           'id'   => $currentUser['id'],
           'name' => $currentUser['name'],
+          'username' => $currentUser['username'],
           'role' => $currentUser['role'],
+          'mustChangePassword' => $currentUser['must_change_password'],
       ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script>
@@ -1437,6 +1908,8 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
     <script>
       /* Pomodoro preferences from the database. PHP writes them here. */
       window.STUDYHUB_POMODORO = <?= json_encode($pomodoroPreferences, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      /* Live announcements for this user's role (Admin > Settings). */
+      window.STUDYHUB_ANNOUNCEMENTS = <?= json_encode($announcements, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script src="js/auth.js" defer></script>
     <script src="js/app.js" defer></script>

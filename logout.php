@@ -4,6 +4,12 @@
 
 require __DIR__ . '/includes/auth.php';   // starts the session
 
+// Record who signed out (read straight from the session; no re-validation needed).
+if (!empty($_SESSION['user']['id'])) {
+    $id = (int) $_SESSION['user']['id'];
+    log_security_event('LOGOUT', $id, $id, 'Signed out');
+}
+
 // 1. Empty the session data on the server.
 $_SESSION = [];
 

@@ -22,7 +22,8 @@ function get_audit_for_user($conn, $userId, $limit = 200)
         $audit[] = [
             'id'        => (int) $row['id'],
             'timestamp' => str_replace(' ', 'T', $row['created_at']),
-            'actor'     => 'User ' . $userId, // could join users table for name
+            // Everything in your own trail was done by you, except moderation.
+            'actor'     => $row['action'] === 'MODERATION_DELETE' ? 'An administrator' : 'You',
             'action'    => $row['action'],
             'targetId'  => $row['entity_id'],
             'details'   => $row['details'] ?? '',

@@ -278,6 +278,24 @@ a {
   font-size: 13px;
 }
 
+/* The hidden attribute must win over component display rules
+   (e.g. .auth-form is display:flex, which would otherwise keep it visible). */
+[hidden] {
+  display: none !important;
+}
+
+.role-option.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Neutral notices: "waiting for approval", "you were signed out". */
+.auth-message.is-info {
+  border-color: rgba(79, 214, 168, 0.35);
+  background: rgba(79, 214, 168, 0.08);
+  color: #bfeedd;
+}
+
 .auth-footer {
   margin: 0;
   color: var(--auth-muted);

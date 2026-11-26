@@ -3,7 +3,8 @@
    index.php writes window.STUDYHUB_USER. This file only passes that data to app.js. */
 (() => {
   const ROLES = {
-    admin: { label: "Administrator", view: "admin" },
+    super_admin: { label: "Super Admin", view: "admin" },
+    admin: { label: "Admin", view: "admin" },
     student: { label: "Student", view: "student" },
     teacher: { label: "Teacher", view: "teacher" },
   };
