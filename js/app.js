@@ -531,10 +531,19 @@ const state = {
   },
 };
 
-const STORAGE_KEY = "studyhub-state-v1";
+// Version of the JSON backup format (Export / Import). Bump it when the format
+// changes; api/data.php refuses versions it does not know.
 const SCHEMA_VERSION = 1;
 let pendingImport = null;
-let persistenceBlocked = false;
+
+// Older builds kept a full copy of the user's tasks, schedules and notes in
+// localStorage. The database is the only copy now, so drop the leftover one
+// (it would otherwise stay readable on shared computers after logout).
+try {
+  localStorage.removeItem("studyhub-state-v1");
+} catch {
+  /* storage blocked: nothing to clean up */
+}
 
 function showStorageStatus(message, isError = false) {
   const status = document.querySelector("#storage-status-message");
@@ -656,29 +665,8 @@ function isValidPayload(payload) {
   return true;
 }
 
-function applyPayload(payload) {
-  state.records = payload.records;
-  state.archivedRecords = payload.archivedRecords;
-  state.schedules = payload.schedules;
-  state.notes = payload.notes;
-  if (Array.isArray(payload.auditLog)) {
-    state.auditLog = payload.auditLog.slice(0, 200);
-  }
-  if (payload.preferences && typeof payload.preferences === 'object') {
-    state.filters = { ...payload.preferences.filters };
-    state.sort = { ...payload.preferences.sort };
-    state.pageSize = payload.preferences.pageSize;
-    state.preferences.theme = payload.preferences.theme;
-  }
-  state.query = "";
-  state.page = 1;
-  state.selectedRecord = null;
-  state.editingRecord = null;
-  state.editingSchedule = null;
-  state.editingNote = null;
-}
-
-function createStoragePayload() {
+/* The JSON backup file (Export). Import validates it with isValidPayload(). */
+function createBackupPayload() {
   return {
     schemaVersion: SCHEMA_VERSION,
     savedAt: new Date().toISOString(),
@@ -697,72 +685,8 @@ function createStoragePayload() {
   };
 }
 
-function saveState() {
-  if (!currentUser || persistenceBlocked) return false;
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(createStoragePayload()));
-    return true;
-  } catch (error) {
-    console.error("Unable to save StudyHub state.", error);
-    showStorageStatus(
-      "StudyHub could not save your data. Check browser storage settings; export a backup if possible.",
-      true,
-    );
-    return false;
-  }
-}
-
-function restoreState() {
-  if (!currentUser) {
-    persistenceBlocked = true;
-    return;
-  }
-
-  let raw;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY);
-  } catch (error) {
-    console.error("Unable to read saved StudyHub state.", error);
-    persistenceBlocked = true;
-    showStorageStatus(
-      "Saved data could not be read. The app is using safe defaults; check browser storage settings.",
-      true,
-    );
-    return;
-  }
-
-  if (raw === null) return;
-
-  let payload;
-  try {
-    payload = JSON.parse(raw);
-  } catch (error) {
-    console.error("Saved StudyHub data is malformed JSON.", error);
-    persistenceBlocked = true;
-    showStorageStatus(
-      "Saved data is malformed. The app is using safe defaults and has left the saved data untouched so it can be recovered.",
-      true,
-    );
-    return;
-  }
-
-  if (!isValidPayload(payload)) {
-    persistenceBlocked = true;
-    showStorageStatus(
-      "Saved data is incomplete, invalid, or from an unsupported schema version. The app is using safe defaults and has left the saved data untouched.",
-      true,
-    );
-    return;
-  }
-
-  applyPayload(payload);
-}
-
-restoreState();
-
 /* Tasks from the database. PHP writes window.STUDYHUB_TASKS in index.php.
-   The database is the source of truth: these replace anything in localStorage. */
+   The database is the source of truth. */
 if (Array.isArray(window.STUDYHUB_TASKS)) {
   state.records = window.STUDYHUB_TASKS.filter((t) => t.status !== "Archived");
   state.archivedRecords = window.STUDYHUB_TASKS.filter(
@@ -770,26 +694,23 @@ if (Array.isArray(window.STUDYHUB_TASKS)) {
   );
 }
 
-/* Schedules from the database. PHP writes window.STUDYHUB_SCHEDULES in index.php.
-   They replace anything saved in localStorage. */
+/* Schedules from the database. PHP writes window.STUDYHUB_SCHEDULES in index.php. */
 if (Array.isArray(window.STUDYHUB_SCHEDULES)) {
   state.schedules = window.STUDYHUB_SCHEDULES;
 }
 
-/* Notes from the database. PHP writes window.STUDYHUB_NOTES in index.php.
-   They replace anything saved in localStorage. */
+/* Notes from the database. PHP writes window.STUDYHUB_NOTES in index.php. */
 if (Array.isArray(window.STUDYHUB_NOTES)) {
   state.notes = window.STUDYHUB_NOTES;
 }
 
-/* Audit log from the database. PHP writes window.STUDYHUB_AUDIT in index.php.
-   Replaces the localStorage-only audit trail. */
+/* Audit log from the database. PHP writes window.STUDYHUB_AUDIT in index.php. */
 if (Array.isArray(window.STUDYHUB_AUDIT)) {
   state.auditLog = window.STUDYHUB_AUDIT;
 }
 
-/* User preferences from the database. PHP writes window.STUDYHUB_PREFERENCES in index.php.
-   Replaces localStorage for theme, filters, sort, page size. */
+/* User preferences from the database. PHP writes window.STUDYHUB_PREFERENCES in index.php:
+   theme, filters, sort, page size. */
 if (
   window.STUDYHUB_PREFERENCES &&
   typeof window.STUDYHUB_PREFERENCES === "object"
@@ -1393,8 +1314,6 @@ function computeCategoryScores(results) {
 }
 
 function runQualityAssuranceSuite() {
-  const originalBlocked = persistenceBlocked;
-
   const runTest = (
     testId,
     category,
@@ -1457,59 +1376,26 @@ function runQualityAssuranceSuite() {
     runTest(
       "R-01",
       "R",
-      "Malformed stored JSON",
-      "Restore state after parse failure",
-      "Recovery mode enabled",
+      "Corrupt or outdated backup file",
+      "Validate it before Import",
+      "File rejected; current data untouched",
       () => {
-        let originalStorageValue;
-        let changedStorage = false;
-        const statusElement = document.querySelector("#storage-status-message");
-        const previousStatus = statusElement
-          ? {
-              text: statusElement.textContent,
-              hidden: statusElement.hidden,
-              role: statusElement.getAttribute("role"),
-            }
-          : null;
+        const good = createBackupPayload();
+        const wrongVersion = { ...good, schemaVersion: SCHEMA_VERSION + 1 };
+        const missingNotes = { ...good };
+        delete missingNotes.notes;
+        let unparsable = false;
         try {
-          originalStorageValue = localStorage.getItem(STORAGE_KEY);
-          localStorage.setItem(STORAGE_KEY, "{bad json");
-          changedStorage = true;
-          persistenceBlocked = false;
-          restoreState();
-          return persistenceBlocked === true;
-        } catch (error) {
-          console.error("Unable to run QA storage-recovery check.", error);
-          return false;
-        } finally {
-          persistenceBlocked = originalBlocked;
-          if (changedStorage) {
-            try {
-              if (originalStorageValue === null) {
-                localStorage.removeItem(STORAGE_KEY);
-              } else {
-                localStorage.setItem(STORAGE_KEY, originalStorageValue);
-              }
-            } catch (error) {
-              console.error("Unable to restore storage after QA check.", error);
-              throw new Error(
-                "QA storage check could not restore saved data.",
-                {
-                  cause: error,
-                },
-              );
-            }
-          }
-          if (statusElement && previousStatus) {
-            statusElement.textContent = previousStatus.text;
-            statusElement.hidden = previousStatus.hidden;
-            if (previousStatus.role === null) {
-              statusElement.removeAttribute("role");
-            } else {
-              statusElement.setAttribute("role", previousStatus.role);
-            }
-          }
+          JSON.parse("{bad json");
+        } catch {
+          unparsable = true;
         }
+        return (
+          isValidPayload(good) &&
+          !isValidPayload(wrongVersion) &&
+          !isValidPayload(missingNotes) &&
+          unparsable
+        );
       },
     ),
     runTest(
@@ -2105,7 +1991,6 @@ function render() {
   renderAuditLog();
   renderSchedules();
   renderNotes();
-  saveState();
 }
 
 // Returns active + archived tasks (archived live separately but count in totals)
@@ -5199,7 +5084,6 @@ function storeTheme(choice) {
       true,
     );
   }
-  saveState();
 }
 
 const lightQuery = window.matchMedia
@@ -5311,8 +5195,6 @@ function reloadWithMessage(message, theme) {
   try {
     sessionStorage.setItem(FLASH_KEY, message);
     if (theme) localStorage.setItem(THEME_KEY, theme);
-    // Drop the old browser copy so nothing stale is mixed back in.
-    localStorage.removeItem(STORAGE_KEY);
   } catch {
     /* storage blocked: the reload still shows the new data */
   }
@@ -5333,7 +5215,7 @@ function showFlashMessage() {
 
 function runPersistenceAssertions() {
   const clone = (value) => JSON.parse(JSON.stringify(value));
-  const valid = createStoragePayload();
+  const valid = createBackupPayload();
 
   console.assert(
     isValidPayload(valid),
@@ -5417,22 +5299,11 @@ function runPersistenceAssertions() {
     "Persistence assertion 7 failed: valid empty collections were rejected.",
   );
 
-  const originalState = clone(state);
-  const expectedIds = valid.records.map((record) => record.id);
-  applyPayload(valid);
-  const restoreSucceeded =
-    JSON.stringify(state.records.map((record) => record.id)) ===
-    JSON.stringify(expectedIds);
-  Object.assign(state, originalState);
-  console.assert(
-    restoreSucceeded,
-    "Persistence assertion 8 failed: valid data did not restore into state.",
-  );
-  console.log("Unit 8 persistence assertions completed (8 checks).");
+  console.log("Backup format assertions completed (7 checks).");
 }
 
 document.querySelector("#btn-export-json")?.addEventListener("click", () => {
-  const payload = createStoragePayload();
+  const payload = createBackupPayload();
   const file = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
   });

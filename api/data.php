@@ -21,6 +21,11 @@ const MAX_SCHEDULES  = 500;
 const MAX_NOTES      = 2000;
 const MAX_HISTORY    = 200;               // status changes kept per task
 
+// Backup file formats this server understands (schemaVersion in the JSON,
+// SCHEMA_VERSION in js/app.js). Add a version here only together with the code
+// that reads it; older versions would be converted in clean_backup().
+const SUPPORTED_BACKUP_VERSIONS = [1];
+
 const PRIORITIES = ['Low', 'Medium', 'High'];
 const STATUSES   = ['To do', 'In progress', 'In review', 'Done', 'Archived'];
 const DAYS       = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -286,6 +291,11 @@ $action = $input['action'] ?? '';
 // Build the cleaned data set for the chosen action.
 try {
     if ($action === 'import') {
+        $version = $input['data']['schemaVersion'] ?? null;
+        if (!in_array($version, SUPPORTED_BACKUP_VERSIONS, true)) {
+            throw new ImportError('This backup uses an unsupported format version ('
+                . (is_scalar($version) ? $version : 'none') . '). Export a new backup and try again.');
+        }
         $clean = clean_backup($input['data'] ?? null);
     } elseif ($action === 'reset') {
         $clean = clean_backup(['records' => [], 'archivedRecords' => [], 'schedules' => [], 'notes' => []]);
