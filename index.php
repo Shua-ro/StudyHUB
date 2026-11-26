@@ -102,7 +102,13 @@ $announcements = get_active_announcements($conn, $currentUser['role']);
           type="search"
           placeholder="Search tasks"
           autocomplete="off"
+          role="combobox"
+          aria-expanded="false"
+          aria-controls="search-results"
+          aria-autocomplete="list"
         />
+        <div id="search-results" class="search-results" role="listbox" aria-label="Task search results" hidden></div>
+        <p id="search-status" class="sr-only" role="status" aria-live="polite"></p>
       </form>
 
       <button type="button" id="add-task-btn" class="btn btn-primary" data-view="student">

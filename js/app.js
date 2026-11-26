@@ -1284,19 +1284,54 @@ function showToast(message, duration = 2000) {
   }, duration);
 }
 
-function matchesQuery(task) {
-  const query = normalize(state.query);
+/* Search helpers: every word typed must match somewhere in the task
+   (title, subject, description, id, tags, priority, status or due date).
+   Case, accents and extra spaces are ignored. */
+function searchText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  if (!query) return true;
+function searchTokens(query) {
+  return searchText(query).split(" ").filter(Boolean);
+}
 
-  return [
+/* Returns a relevance score, or -1 when the task does not match. */
+function taskSearchScore(task, tokens) {
+  if (!tokens.length) return 0;
+
+  const title = searchText(task.title);
+  const subject = searchText(task.subject);
+  const others = [
     task.id,
-    task.title,
-    task.subject,
     task.description,
     task.priority,
     task.status,
-  ].some((value) => normalize(value).includes(query));
+    task.dueDate,
+    Array.isArray(task.tags) ? task.tags.join(" ") : task.tags,
+  ].map(searchText);
+
+  let score = 0;
+
+  for (const token of tokens) {
+    if (title.startsWith(token)) score += 100;
+    else if (title.split(" ").some((word) => word.startsWith(token))) score += 80;
+    else if (title.includes(token)) score += 60;
+    else if (subject.includes(token)) score += 30;
+    else if (others.some((value) => value.includes(token))) score += 10;
+    else return -1;
+  }
+
+  return score;
+}
+
+function matchesQuery(task) {
+  return taskSearchScore(task, searchTokens(state.query)) >= 0;
 }
 
 function matchesFilters(task) {
@@ -3660,21 +3695,240 @@ if (taskForm) {
   });
 }
 
+/* ---------- Search: live dropdown with results / "no results" ---------- */
 const searchInput = document.querySelector("#global-search");
+const searchForm = document.querySelector("#search-form");
+const searchResults = document.querySelector("#search-results");
+const searchStatus = document.querySelector("#search-status");
+const SEARCH_MAX_RESULTS = 6;
 
-if (searchInput) {
-  searchInput.addEventListener("input", (event) => {
-    state.query = event.target.value;
-    state.page = 1;
-    render();
+let searchHits = [];
+let searchActiveIndex = -1;
+
+function highlightMatch(text, tokens) {
+  const value = String(text ?? "");
+  if (!tokens.length) return escapeHTML(value);
+
+  const pattern = new RegExp(
+    `(${tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    "gi",
+  );
+
+  return value
+    .split(pattern)
+    .map((part, index) =>
+      index % 2 === 1
+        ? `<mark>${escapeHTML(part)}</mark>`
+        : escapeHTML(part),
+    )
+    .join("");
+}
+
+function setSearchOpen(isOpen) {
+  if (!searchResults || !searchInput) return;
+  searchResults.hidden = !isOpen;
+  searchInput.setAttribute("aria-expanded", String(isOpen));
+  if (!isOpen) {
+    searchActiveIndex = -1;
+    searchInput.removeAttribute("aria-activedescendant");
+  }
+}
+
+function setActiveSearchItem(index) {
+  const items = searchResults.querySelectorAll(".search-item");
+  searchActiveIndex = items.length ? (index + items.length) % items.length : -1;
+
+  items.forEach((item, i) => {
+    const active = i === searchActiveIndex;
+    item.classList.toggle("is-active", active);
+    item.setAttribute("aria-selected", String(active));
+    if (active) {
+      searchInput.setAttribute("aria-activedescendant", item.id);
+      item.scrollIntoView({ block: "nearest" });
+    }
   });
 }
 
-const searchForm = document.querySelector("#search-form");
+function renderSearchDropdown() {
+  if (!searchResults || !searchInput) return;
+
+  const rawQuery = searchInput.value.trim();
+
+  if (!rawQuery) {
+    searchHits = [];
+    searchResults.innerHTML = "";
+    setSearchOpen(false);
+    if (searchStatus) searchStatus.textContent = "";
+    return;
+  }
+
+  const tokens = searchTokens(rawQuery);
+
+  searchHits = state.records
+    .map((task) => ({ task, score: taskSearchScore(task, tokens) }))
+    .filter((hit) => hit.score >= 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score || String(a.task.dueDate).localeCompare(String(b.task.dueDate)),
+    )
+    .map((hit) => hit.task);
+
+  if (!searchHits.length) {
+    const archivedMatches = (state.archivedRecords || []).filter(
+      (task) => taskSearchScore(task, tokens) >= 0,
+    ).length;
+
+    searchResults.innerHTML = `
+      <div class="search-empty" role="option" aria-selected="false">
+        <strong>No results found for “${escapeHTML(rawQuery)}”</strong>
+        <span>${
+          archivedMatches
+            ? `${archivedMatches} matching ${archivedMatches === 1 ? "task is" : "tasks are"} in Archives.`
+            : "Try a different keyword, subject, priority or status."
+        }</span>
+      </div>`;
+    if (searchStatus) searchStatus.textContent = `No results found for ${rawQuery}.`;
+    setSearchOpen(true);
+    return;
+  }
+
+  const shown = searchHits.slice(0, SEARCH_MAX_RESULTS);
+
+  searchResults.innerHTML =
+    shown
+      .map(
+        (task, index) => `
+      <div class="search-item" id="search-item-${index}" role="option" aria-selected="false" data-id="${escapeHTML(task.id)}">
+        <span class="search-item-title">${highlightMatch(task.title, tokens)}</span>
+        <span class="search-item-meta">
+          ${escapeHTML(task.subject || "No subject")} · Due ${escapeHTML(task.dueDate || "—")} ·
+          ${escapeHTML(task.priority)} ·
+          <span class="status-pill ${getStatusClass(task.status)}">${escapeHTML(task.status)}</span>
+        </span>
+      </div>`,
+      )
+      .join("") +
+    `<button type="button" class="search-all" data-search-all>
+       See all ${searchHits.length} ${searchHits.length === 1 ? "result" : "results"} in Tasks
+     </button>`;
+
+  if (searchStatus) {
+    searchStatus.textContent = `${searchHits.length} ${searchHits.length === 1 ? "result" : "results"} found.`;
+  }
+
+  setSearchOpen(true);
+  setActiveSearchItem(-1);
+  searchActiveIndex = -1;
+}
+
+/* Jump to one task: show it in the Tasks list, open its details, flash the row. */
+function openTaskFromSearch(id) {
+  const task = state.records.find((record) => record.id === id);
+  if (!task) return;
+
+  state.query = "";
+  state.filters.status = "ALL";
+  state.filters.priority = "ALL";
+  const statusSelect = document.querySelector("#status-filter");
+  const prioritySelect = document.querySelector("#priority-filter");
+  if (statusSelect) statusSelect.value = "ALL";
+  if (prioritySelect) prioritySelect.value = "ALL";
+
+  const index = getVisibleRecords().findIndex((record) => record.id === id);
+  state.page = index >= 0 ? Math.floor(index / state.pageSize) + 1 : 1;
+  state.selectedRecord = id;
+  state.editingRecord = null;
+
+  searchInput.value = "";
+  setSearchOpen(false);
+
+  goToSection("tasks");
+  render();
+
+  const row = document.querySelector(`#task-table-body tr[data-id="${CSS.escape(id)}"]`);
+  if (row) {
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.classList.add("search-hit");
+    setTimeout(() => row.classList.remove("search-hit"), 2200);
+  }
+}
+
+/* Show every match in the Tasks list. */
+function showAllSearchResults() {
+  state.query = searchInput.value.trim();
+  state.page = 1;
+  setSearchOpen(false);
+  goToSection("tasks");
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+if (searchInput && searchResults) {
+  searchInput.addEventListener("input", () => {
+    renderSearchDropdown();
+
+    // If the Tasks list is already on screen, filter it as the person types.
+    const tasksVisible = !document.querySelector("#tasks")?.hidden;
+    if (tasksVisible || !searchInput.value.trim()) {
+      const next = searchInput.value.trim();
+      if (state.query !== next) {
+        state.query = next;
+        state.page = 1;
+        render();
+      }
+    }
+  });
+
+  searchInput.addEventListener("focus", () => {
+    if (searchInput.value.trim()) renderSearchDropdown();
+  });
+
+  searchInput.addEventListener("keydown", (event) => {
+    const open = !searchResults.hidden;
+
+    if (event.key === "ArrowDown" && open) {
+      event.preventDefault();
+      setActiveSearchItem(searchActiveIndex + 1);
+    } else if (event.key === "ArrowUp" && open) {
+      event.preventDefault();
+      setActiveSearchItem(searchActiveIndex - 1);
+    } else if (event.key === "Escape" && open) {
+      event.preventDefault();
+      setSearchOpen(false);
+    }
+  });
+
+  searchResults.addEventListener("mousedown", (event) => {
+    // keep focus in the input so the dropdown doesn't close before the click lands
+    event.preventDefault();
+  });
+
+  searchResults.addEventListener("click", (event) => {
+    if (event.target.closest("[data-search-all]")) {
+      showAllSearchResults();
+      return;
+    }
+    const item = event.target.closest(".search-item");
+    if (item) openTaskFromSearch(item.dataset.id);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (searchForm && !searchForm.contains(event.target)) setSearchOpen(false);
+  });
+}
 
 if (searchForm) {
   searchForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!searchInput.value.trim()) return;
+
+    if (searchActiveIndex >= 0 && searchHits[searchActiveIndex]) {
+      openTaskFromSearch(searchHits[searchActiveIndex].id);
+    } else if (searchHits.length) {
+      showAllSearchResults();
+    } else {
+      renderSearchDropdown();
+    }
   });
 }
 
