@@ -580,31 +580,6 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
               ></div>
             </div>
           </div>
-
-          <details class="metrics-formulas">
-            <summary>How these numbers are calculated</summary>
-            <div class="table-wrapper">
-              <p class="section-note">
-                Count each expected value from the task list, enter the number
-                below, and compare it with the live calculated value. Percent
-                values are entered as whole numbers (for example, 25).
-              </p>
-              <table>
-                <caption>
-                  Unit 9 Dashboard Verification Table
-                </caption>
-                <thead>
-                  <tr>
-                    <th>Metric</th>
-                    <th>Manually Counted Expected</th>
-                    <th>Program Calculated</th>
-                    <th>Formula / counting rule</th>
-                  </tr>
-                </thead>
-                <tbody id="metric-verification-body"></tbody>
-              </table>
-            </div>
-          </details>
         </section>
 
         <section id="dash-study" class="card study-card dashboard-wide" aria-labelledby="dash-study-title">
@@ -1419,8 +1394,6 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
       </section>
 
     </main>
-
-    <footer data-view="student teacher admin">Front-end prototype</footer>
 
     <!-- Toast notification container -->
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
