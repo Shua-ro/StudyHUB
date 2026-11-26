@@ -7,8 +7,8 @@ CREATE TABLE audit_log (
   id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id         BIGINT UNSIGNED NOT NULL,
   action          VARCHAR(50)     NOT NULL,     -- CREATE, UPDATE, DELETE, STATUS_CHANGE, ARCHIVE
-  entity_type     VARCHAR(30)     NOT NULL,     -- task, schedule, note, expense
-  entity_id       VARCHAR(64)     NOT NULL,     -- TASK-1, SCH-5, NOTE-3, EXP-2
+  entity_type     VARCHAR(30)     NOT NULL,     -- task, schedule, note
+  entity_id       VARCHAR(64)     NOT NULL,     -- TASK-1, SCH-5, NOTE-3
   details         TEXT            NULL,
   created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

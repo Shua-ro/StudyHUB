@@ -166,10 +166,6 @@ const CAPABILITIES = {
   ANALYTICS_VIEW: "analytics:view",
   // Features
   POMODORO_USE: "pomodoro:use",
-  // Expenses
-  EXPENSE_CREATE: "expense:create",
-  EXPENSE_EDIT: "expense:edit",
-  EXPENSE_DELETE: "expense:delete",
 };
 
 const ROLE_PERMISSIONS = {
@@ -182,9 +178,6 @@ const ROLE_PERMISSIONS = {
     CAPABILITIES.CLASS_JOIN,
     CAPABILITIES.CLASS_CREATE,
     CAPABILITIES.POMODORO_USE,
-    CAPABILITIES.EXPENSE_CREATE,
-    CAPABILITIES.EXPENSE_EDIT,
-    CAPABILITIES.EXPENSE_DELETE,
   ]),
   teacher: new Set([
     CAPABILITIES.TASK_VIEW_OWN,
@@ -369,18 +362,6 @@ const state = {
       status: "Done",
       createdAt: "2026-09-19T20:00:00",
       estimatedMinutes: 20,
-    },
-    {
-      id: "TASK-008",
-      title: "Expense Log Review",
-      subject: "Personal Finance",
-      description:
-        "Check this week's transportation, food, and printing expenses.",
-      dueDate: "2026-10-05",
-      priority: "Low",
-      status: "To do",
-      createdAt: "2026-09-19T16:20:00",
-      estimatedMinutes: 30,
     },
     {
       id: "TASK-009",
@@ -634,38 +615,6 @@ const state = {
   ],
   editingNote: null,
 
-  expenses: [
-    {
-      id: "EXP-001",
-      date: "2026-10-12",
-      item: "Bus fare",
-      category: "Transport",
-      amount: 3.0,
-    },
-    {
-      id: "EXP-002",
-      date: "2026-10-13",
-      item: "Lunch",
-      category: "Food",
-      amount: 8.5,
-    },
-    {
-      id: "EXP-003",
-      date: "2026-10-14",
-      item: "Printed readings",
-      category: "School supplies",
-      amount: 2.25,
-    },
-    {
-      id: "EXP-004",
-      date: "2026-10-15",
-      item: "Bus fare",
-      category: "Transport",
-      amount: 3.0,
-    },
-  ],
-  editingExpense: null,
-
   auditLog: [],
   preferences: {
     theme: null,
@@ -729,7 +678,6 @@ function isValidPayload(payload) {
     !Array.isArray(payload.archivedRecords) ||
     !Array.isArray(payload.schedules) ||
     !Array.isArray(payload.notes) ||
-    !Array.isArray(payload.expenses) ||
     (payload.auditLog !== undefined && !Array.isArray(payload.auditLog))
   ) {
     return false;
@@ -781,17 +729,6 @@ function isValidPayload(payload) {
         typeof item.remark !== "string",
     ) ||
     !hasUniqueIds(payload.notes) ||
-    payload.expenses.some(
-      (item) =>
-        !item ||
-        typeof item.id !== "string" ||
-        typeof item.date !== "string" ||
-        typeof item.item !== "string" ||
-        typeof item.category !== "string" ||
-        !Number.isFinite(item.amount) ||
-        item.amount <= 0,
-    ) ||
-    !hasUniqueIds(payload.expenses) ||
     (Array.isArray(payload.auditLog) &&
       payload.auditLog.some(
         (entry) =>
@@ -815,7 +752,6 @@ function applyPayload(payload) {
   state.archivedRecords = payload.archivedRecords;
   state.schedules = payload.schedules;
   state.notes = payload.notes;
-  state.expenses = payload.expenses;
   if (Array.isArray(payload.auditLog)) {
     state.auditLog = payload.auditLog.slice(0, 200);
   }
@@ -831,7 +767,6 @@ function applyPayload(payload) {
   state.editingRecord = null;
   state.editingSchedule = null;
   state.editingNote = null;
-  state.editingExpense = null;
 }
 
 function createStoragePayload() {
@@ -842,7 +777,6 @@ function createStoragePayload() {
     archivedRecords: state.archivedRecords,
     schedules: state.schedules,
     notes: state.notes,
-    expenses: state.expenses,
     preferences: {
       theme: state.preferences.theme,
       filters: state.filters,
@@ -1540,7 +1474,6 @@ function runQualityAssuranceSuite() {
           archivedRecords: [],
           schedules: [],
           notes: [],
-          expenses: [],
           preferences: {
             theme: "light",
             filters: { status: "ALL", priority: "ALL" },
@@ -1590,7 +1523,6 @@ function runQualityAssuranceSuite() {
           archivedRecords: [],
           schedules: [],
           notes: [],
-          expenses: [],
           preferences: {
             theme: "light",
             filters: { status: "ALL", priority: "ALL" },
@@ -2070,7 +2002,6 @@ function render() {
   renderAuditLog();
   renderSchedules();
   renderNotes();
-  renderExpenses();
   saveState();
 }
 
@@ -2784,247 +2715,6 @@ if (noteList) {
     ) {
       showNoteError("");
       deleteNote(id);
-    }
-  });
-}
-
-function formatMoney(value) {
-  return `$${Number(value).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function formatExpenseDate(value) {
-  const [y, m, d] = String(value).split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function generateExpenseId() {
-  const numbers = state.expenses
-    .map((item) => Number(item.id.replace("EXP-", "")))
-    .filter(Number.isFinite);
-  const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
-  return `EXP-${String(next).padStart(3, "0")}`;
-}
-
-// Sum in cents to avoid float drift (0.30000000000000004)
-function getExpenseTotal() {
-  const cents = state.expenses.reduce(
-    (sum, item) => sum + Math.round(item.amount * 100),
-    0,
-  );
-  return cents / 100;
-}
-
-function validateExpense(entry) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.date))
-    return "A valid date is required.";
-  if (!entry.item) return "The item name is required.";
-  if (!Number.isFinite(entry.amount) || entry.amount <= 0) {
-    return "Amount must be a number greater than 0.";
-  }
-  if (entry.amount > 10000000) return "Amount is too large.";
-  return "";
-}
-
-function addExpense(entry) {
-  if (!allowed(CAPABILITIES.EXPENSE_CREATE)) return "Not permitted.";
-
-  const error = validateExpense(entry);
-  if (error) return error;
-
-  const record = { id: generateExpenseId(), ...entry };
-  state.expenses = [...state.expenses, record];
-  logAudit(
-    "CREATE",
-    record.id,
-    `Expense: ${record.item} (${formatMoney(record.amount)})`,
-  );
-  showMessage(`${record.id} was added.`);
-  render();
-  renderExpenseForm();
-  return "";
-}
-
-function updateExpense(id, updates) {
-  if (!allowed(CAPABILITIES.EXPENSE_EDIT)) return "Not permitted.";
-
-  if (!state.expenses.some((item) => item.id === id)) {
-    return `Expense "${id}" was not found.`;
-  }
-
-  const error = validateExpense(updates);
-  if (error) return error;
-
-  state.expenses = state.expenses.map((item) =>
-    item.id === id ? { ...item, ...updates } : item,
-  );
-  state.editingExpense = null;
-  logAudit(
-    "UPDATE",
-    id,
-    `Expense: ${updates.item} (${formatMoney(updates.amount)})`,
-  );
-  showMessage(`${id} was updated.`);
-  render();
-  renderExpenseForm();
-  return "";
-}
-
-function deleteExpense(id) {
-  if (!allowed(CAPABILITIES.EXPENSE_DELETE)) return false;
-
-  const existing = state.expenses.find((item) => item.id === id);
-  if (!existing) {
-    showMessage(`Expense "${id}" was not found.`);
-    return false;
-  }
-
-  const wasEditing = state.editingExpense === id;
-  state.expenses = state.expenses.filter((item) => item.id !== id);
-  if (wasEditing) state.editingExpense = null;
-  logAudit(
-    "DELETE",
-    id,
-    `Expense: ${existing.item} (${formatMoney(existing.amount)})`,
-  );
-  showMessage(`${id} was deleted.`);
-  render();
-  if (wasEditing) renderExpenseForm();
-  return true;
-}
-
-function renderExpenseForm() {
-  const form = document.querySelector("#expense-form");
-  if (!form) return;
-
-  const editing = state.expenses.find(
-    (item) => item.id === state.editingExpense,
-  );
-
-  if (editing) {
-    form.elements.id.value = editing.id;
-    form.elements.date.value = editing.date;
-    form.elements.itemName.value = editing.item;
-    form.elements.category.value = editing.category;
-    form.elements.amount.value = editing.amount.toFixed(2);
-  } else {
-    form.reset();
-    form.elements.id.value = "";
-  }
-
-  const submit = document.querySelector("#expense-submit");
-  const cancel = document.querySelector("#expense-cancel");
-  const title = document.querySelector("#expense-form-title");
-  if (submit) submit.textContent = editing ? "Save changes" : "Add expense";
-  if (cancel) cancel.hidden = !editing;
-  if (title)
-    title.textContent = editing
-      ? `Edit expense (${editing.id})`
-      : "Add expense";
-}
-
-function renderExpenses() {
-  const body = document.querySelector("#expense-table-body");
-  if (!body) return;
-
-  const sorted = [...state.expenses].sort(
-    (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
-  );
-
-  body.innerHTML = sorted.length
-    ? sorted
-        .map(
-          (item) => `
-            <tr>
-              <td class="nowrap">${escapeHTML(formatExpenseDate(item.date))}</td>
-              <td>${escapeHTML(item.item)}</td>
-              <td>${escapeHTML(item.category || "Uncategorized")}</td>
-              <td class="nowrap">${formatMoney(item.amount)}</td>
-              <td>
-                <div class="task-actions">
-                  <button type="button" data-expense-action="edit" data-id="${escapeHTML(item.id)}">Edit</button>
-                  <button type="button" class="btn-danger" data-expense-action="delete" data-id="${escapeHTML(item.id)}">Delete</button>
-                </div>
-              </td>
-            </tr>`,
-        )
-        .join("")
-    : `<tr><td colspan="5">No expenses recorded yet.</td></tr>`;
-
-  setText("#expense-total", formatMoney(getExpenseTotal()));
-}
-
-function showExpenseError(message) {
-  const box = document.querySelector("#expense-error-summary");
-  if (!box) return;
-  box.textContent = message;
-  box.hidden = !message;
-}
-
-const expenseForm = document.querySelector("#expense-form");
-
-if (expenseForm) {
-  expenseForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-
-    const data = new FormData(expenseForm);
-    const rawAmount = String(data.get("amount") ?? "").trim();
-    const entry = {
-      date: String(data.get("date") ?? ""),
-      item: String(data.get("itemName") ?? "").trim(),
-      category: String(data.get("category") ?? "").trim(),
-      amount:
-        rawAmount === "" ? NaN : Math.round(Number(rawAmount) * 100) / 100,
-    };
-
-    const id = String(data.get("id") ?? "");
-    showExpenseError(id ? updateExpense(id, entry) : addExpense(entry));
-  });
-}
-
-const expenseCancel = document.querySelector("#expense-cancel");
-
-if (expenseCancel) {
-  expenseCancel.addEventListener("click", () => {
-    state.editingExpense = null;
-    showExpenseError("");
-    renderExpenseForm();
-  });
-}
-
-const expenseBody = document.querySelector("#expense-table-body");
-
-if (expenseBody) {
-  expenseBody.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-expense-action]");
-    if (!button) return;
-
-    const { expenseAction, id } = button.dataset;
-    const item = state.expenses.find((entry) => entry.id === id);
-    if (!item) return;
-
-    if (expenseAction === "edit") {
-      state.editingExpense = id;
-      showExpenseError("");
-      renderExpenseForm();
-      document.querySelector("#expense-item")?.focus();
-    }
-
-    if (
-      expenseAction === "delete" &&
-      window.confirm(`Delete "${item.item}" (${formatMoney(item.amount)})?`)
-    ) {
-      showExpenseError("");
-      deleteExpense(id);
     }
   });
 }
@@ -3936,7 +3626,7 @@ function runPersistenceAssertions() {
   );
 
   const missingCollection = clone(valid);
-  delete missingCollection.expenses;
+  delete missingCollection.notes;
   console.assert(
     !isValidPayload(missingCollection),
     "Persistence assertion 4 failed: a missing required collection was accepted.",
@@ -3964,7 +3654,6 @@ function runPersistenceAssertions() {
     "archivedRecords",
     "schedules",
     "notes",
-    "expenses",
     "auditLog",
   ]) {
     emptyPayload[collection] = [];
@@ -4027,7 +3716,7 @@ document
       const previewText = document.querySelector("#import-preview-text");
       const preview = document.querySelector("#import-preview-box");
       if (previewText) {
-        previewText.textContent = `${count} task record(s) (${payload.records.length} active, ${payload.archivedRecords.length} archived), ${payload.schedules.length} schedule(s), ${payload.notes.length} note(s), and ${payload.expenses.length} expense(s). Backup saved ${new Date(payload.savedAt).toLocaleString()}. Confirm to replace current app data.`;
+        previewText.textContent = `${count} task record(s) (${payload.records.length} active, ${payload.archivedRecords.length} archived), ${payload.schedules.length} schedule(s), and ${payload.notes.length} note(s). Backup saved ${new Date(payload.savedAt).toLocaleString()}. Confirm to replace current app data.`;
       }
       if (preview) preview.hidden = false;
       showStorageStatus(

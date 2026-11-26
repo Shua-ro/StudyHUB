@@ -114,7 +114,6 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
         <li data-view="student"><a href="#tasks">Tasks</a></li>
         <li data-view="student"><a href="#schedules">Schedules</a></li>
         <li data-view="student"><a href="#notes">Notes</a></li>
-        <li data-view="student"><a href="#expenses">Expenses</a></li>
         <li data-view="student"><a href="#settings">Settings</a></li>
       </ul>
     </nav>
@@ -452,7 +451,7 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
           <strong id="summary-upcoming">0 due within 7 days</strong>
         </section>
 
-        <section id="dash-expenses" class="dashboard-metric">
+        <section id="dash-top-priority" class="dashboard-metric">
           <h3>Top priority</h3>
           <strong id="summary-priority">No pending tasks</strong>
         </section>
@@ -1059,103 +1058,6 @@ $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUs
           <h3>Study notes</h3>
           <div id="note-list"></div>
           <p id="note-empty-state" hidden>No notes yet. Add one above.</p>
-        </div>
-      </section>
-
-      <section
-        id="expenses"
-        data-view="student"
-        aria-labelledby="expenses-title"
-        hidden
-      >
-        <h2 id="expenses-title">Expenses</h2>
-
-        <div class="content-card">
-          <h3 id="expense-form-title">Add expense</h3>
-          <div id="expense-error-summary" role="alert" hidden></div>
-
-          <form id="expense-form" novalidate>
-            <input type="hidden" id="expense-id" name="id" />
-
-            <div>
-              <label for="expense-date">Date</label>
-              <input type="date" id="expense-date" name="date" required />
-            </div>
-
-            <div>
-              <label for="expense-item">Item</label>
-              <input
-                type="text"
-                id="expense-item"
-                name="itemName"
-                placeholder="e.g. Bus fare"
-                required
-              />
-            </div>
-
-            <div>
-              <label for="expense-category">Category</label>
-              <input
-                type="text"
-                id="expense-category"
-                name="category"
-                list="expense-category-options"
-                placeholder="e.g. Transport"
-              />
-              <datalist id="expense-category-options">
-                <option value="Transport"></option>
-                <option value="Food"></option>
-                <option value="School supplies"></option>
-                <option value="Other"></option>
-              </datalist>
-            </div>
-
-            <div>
-              <label for="expense-amount">Amount ($)</label>
-              <input
-                type="number"
-                id="expense-amount"
-                name="amount"
-                min="0.01"
-                step="0.01"
-                placeholder="0.00"
-                required
-              />
-            </div>
-
-            <button type="submit" id="expense-submit">Add expense</button>
-            <button type="button" id="expense-cancel" hidden>
-              Cancel edit
-            </button>
-          </form>
-        </div>
-
-        <div class="content-card">
-          <h3>Expense log</h3>
-          <div class="table-wrapper">
-            <table>
-              <caption>
-                Expense log
-              </caption>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Item</th>
-                  <th>Category</th>
-                  <th>Amount</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="expense-table-body"></tbody>
-              <tfoot>
-                <tr>
-                  <th colspan="3" scope="row">Total</th>
-                  <td id="expense-total">$0.00</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
         </div>
       </section>
 

@@ -26,8 +26,6 @@
   --schedules-bg: #0f2333;
   --notes: #b98af2;
   --notes-bg: #241633;
-  --expenses: #f2688a;
-  --expenses-bg: #331420;
   --focus: #4fd6a8;
   --focus-bg: #0c2b23;
 
@@ -203,8 +201,8 @@ footer {
 #dash-notes {
   border-left: 3px solid var(--notes);
 }
-#dash-expenses {
-  border-left: 3px solid var(--expenses);
+#dash-top-priority {
+  border-left: 3px solid var(--tasks);
 }
 #dash-focus {
   border-left: 3px solid var(--focus);
@@ -969,17 +967,15 @@ body.focus-mode .focus-panel {
 }
 
 /* ==========================================
-   NOTES + EXPENSES CRUD
+   NOTES CRUD
    ========================================== */
 
-#note-form,
-#expense-form {
+#note-form {
   align-items: flex-end;
   margin-bottom: 0;
 }
 
-#note-form > div,
-#expense-form > div {
+#note-form > div {
   flex: 1 1 180px;
 }
 
@@ -988,18 +984,12 @@ body.focus-mode .focus-panel {
 }
 
 #note-form input,
-#note-form textarea,
-#expense-form input {
+#note-form textarea {
   width: 100%;
 }
 
-#expense-form input[type="date"] {
-  color-scheme: dark;
-}
-
 @media (max-width: 768px) {
-  #note-form,
-  #expense-form {
+  #note-form {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
@@ -1008,7 +998,6 @@ body.focus-mode .focus-panel {
   }
 
   #note-form > div,
-  #expense-form > div,
   #note-form > .field-wide {
     flex: initial;
     min-width: 0;
@@ -1018,16 +1007,14 @@ body.focus-mode .focus-panel {
     grid-column: 1 / -1;
   }
 
-  #note-form > button,
-  #expense-form > button {
+  #note-form > button {
     width: 100%;
     min-height: 2.75rem;
   }
 }
 
 @media (max-width: 420px) {
-  #note-form,
-  #expense-form {
+  #note-form {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1037,9 +1024,7 @@ body.focus-mode .focus-panel {
 }
 
 #note-cancel,
-#expense-cancel,
-#note-list button,
-#expense-table-body button {
+#note-list button {
   font-family: inherit;
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -1048,15 +1033,13 @@ body.focus-mode .focus-panel {
   padding: var(--space-2) var(--space-3);
 }
 
-#note-list .btn-danger,
-#expense-table-body .btn-danger {
+#note-list .btn-danger {
   background: rgba(255, 92, 92, 0.15);
   color: var(--danger);
   border-color: var(--danger);
 }
 
-#note-error-summary,
-#expense-error-summary {
+#note-error-summary {
   margin-bottom: var(--space-3);
 }
 
@@ -1071,11 +1054,6 @@ body.focus-mode .focus-panel {
 #note-list .info-entry:first-child {
   border-top: none;
   padding-top: 0;
-}
-
-#expense-total {
-  font-weight: 700;
-  color: var(--expenses);
 }
 
 tfoot th,
@@ -1148,8 +1126,6 @@ tfoot td {
   --schedules-bg: #dbe9f7;
   --notes: #7237bb;
   --notes-bg: #eadcf8;
-  --expenses: #b82a52;
-  --expenses-bg: #fadbe4;
   --focus: #0a7556;
   --focus-bg: #d6f1e6;
 
@@ -1170,15 +1146,13 @@ tfoot td {
 }
 
 :root[data-theme="light"] select,
-:root[data-theme="light"] #schedule-form input[type="time"],
-:root[data-theme="light"] #expense-form input[type="date"] {
+:root[data-theme="light"] #schedule-form input[type="time"] {
   color-scheme: light;
 }
 
 :root[data-theme="light"] .btn-danger,
 :root[data-theme="light"] #schedule-table-body .btn-danger,
-:root[data-theme="light"] #note-list .btn-danger,
-:root[data-theme="light"] #expense-table-body .btn-danger {
+:root[data-theme="light"] #note-list .btn-danger {
   background: rgba(192, 38, 38, 0.08);
 }
 
@@ -2034,8 +2008,6 @@ html:not([data-ready]) body > :not(script) {
   --schedules-bg: #dfecf9;
   --notes: #7339c0;
   --notes-bg: #eee3fa;
-  --expenses: #bd2c57;
-  --expenses-bg: #fae2ea;
   --focus: #0a7556;
   --focus-bg: #e0f4ec;
 
@@ -2211,8 +2183,8 @@ html:not([data-ready]) body > :not(script) {
 #dashboard > #dash-notes {
   border-left: 3px solid var(--notes);
 }
-#dashboard > #dash-expenses {
-  border-left: 3px solid var(--expenses);
+#dashboard > #dash-top-priority {
+  border-left: 3px solid var(--tasks);
 }
 #dashboard > #dash-focus {
   border-left: 3px solid var(--focus);
