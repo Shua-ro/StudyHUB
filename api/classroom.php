@@ -1,12 +1,8 @@
 <?php
-// api/classroom.php
-// Classes (create / list / search / edit / delete), joining by code, and
-// class posts. Used by js/classroom.js and the classroom block in js/app.js.
-// Class tasks and submissions live in api/classroom_tasks.php.
-//
-//   GET  ?q=word   search classes by code, title, subject, section or teacher
-//   POST action =  join_class | create_class | update_class | delete_class
-//                  | create_post | delete_post
+// classes: create/list/search/edit/delete, join by code, class posts.
+// class tasks + submissions are in classroom_tasks.php
+//   GET  ?q=word   search
+//   POST action = join_class | create_class | update_class | delete_class | create_post | delete_post
 ob_start();
 ini_set('display_errors', '0');
 
@@ -37,7 +33,7 @@ function write_audit($conn, $userId, $action, $entityType, $entityId, $details =
             mysqli_stmt_execute($stmt);
         }
     } catch (Throwable $e) {
-        // Ignore audit log errors
+        // don't care if the audit log fails
     }
 }
 
@@ -57,11 +53,11 @@ function generate_class_code($conn)
 }
 
 try {
-    $user = api_user();   // 401 if signed out, 403 if a password change is required
+    $user = api_user();
 
     $userId  = (int) $user['id'];
     $role    = (string) ($user['role'] ?? 'student');
-    // Admins and Super Admins can see and manage every class.
+    // admins can see/manage every class
     $isAdmin = in_array($role, ['admin', 'super_admin'], true);
     $isStaff = $isAdmin || $role === 'teacher';
 
@@ -389,7 +385,7 @@ try {
             if ($classroomId <= 0) {
                 reply(['ok' => false, 'message' => 'Please select a class.'], 400);
             }
-            // Only plain web links (the page turns this into a clickable link).
+            // http(s) links only, the page makes it clickable
             if ($link !== '' && (strlen($link) > 255
                     || !filter_var($link, FILTER_VALIDATE_URL)
                     || !preg_match('#^https?://#i', $link))) {

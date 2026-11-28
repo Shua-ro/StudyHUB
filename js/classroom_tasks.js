@@ -1,7 +1,5 @@
-// js/classroom_tasks.js
-// Class tasks and submissions: teacher Dashboard numbers, Students, Submissions,
-// Feedback & Grades, Class Analytics, and the student Classroom task list.
-// (The teacher Classroom page itself lives in js/teacher_classroom.js.)
+// class tasks + submissions: teacher dashboard numbers, students, submissions, grades,
+// analytics, and the student task list
 (function () {
   var API_URL = "api/classroom_tasks.php";
 
@@ -1014,8 +1012,7 @@
       });
   }
 
-  // Used by js/teacher_classroom.js: refresh after it changes tasks, and open
-  // the Submissions page already filtered to one class.
+  // teacher_classroom.js uses these to refresh after task changes + open submissions filtered to a class
   window.classroomTasks = {
     reload: loadClassroomTasks,
     showSubmissions: function (classId) {

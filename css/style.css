@@ -1,14 +1,11 @@
-/* ==========================================================================
-   StudyHub — main stylesheet
-   One token system for light + dark. Components read tokens only; no
-   per-theme overrides below the token blocks unless unavoidable.
-   ========================================================================== */
+/* StudyHub main styles. light + dark both go through the tokens,
+   try not to add per-theme overrides further down */
 
-/* ---------- Tokens ---------- */
+/* tokens */
 :root {
   color-scheme: light;
 
-  /* surfaces — warm paper, not clinical white */
+  /* surfaces */
   --bg: #f4f3ee;
   --surface: #ffffff;
   --surface-2: #f8f7f3; /* sunken: inputs, tracks, inner panels */
@@ -21,7 +18,7 @@
   --text-2: #484c46;
   --text-3: #686c65; /* 5:1 on white */
 
-  /* brand — deep study green */
+  /* brand green */
   --brand: #0b7556;
   --brand-hover: #09654a;
   --brand-soft: #e2f0e9;
@@ -99,7 +96,7 @@
   --shadow-pop: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border);
 }
 
-/* ---------- Reset / base ---------- */
+/* reset / base */
 *,
 *::before,
 *::after {
@@ -201,15 +198,14 @@ svg {
   color: var(--text);
 }
 
-/* Hide the page until app.js has applied the role view (no flash of the wrong UI).
-   Uses opacity, NOT visibility: visibility is inherited, and Chrome can keep a
-   stale "hidden" on SVG icons (<use>) inside sections revealed by JS, which left
-   the admin dashboard icons invisible. Opacity isn't inherited, so it can't. */
+/* hidden until app.js applies the role view so the wrong UI doesn't flash.
+   opacity, NOT visibility - chrome kept svg icons hidden after visibility was
+   flipped back (admin dashboard icons went invisible). opacity isn't inherited */
 html:not([data-ready]) body > :not(script) {
   opacity: 0;
 }
 
-/* ---------- App shell ---------- */
+/* app shell */
 body {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
@@ -488,7 +484,7 @@ tr.search-hit td {
   padding: var(--space-6);
 }
 
-/* ---------- Buttons ---------- */
+/* buttons */
 button {
   font: inherit;
   color: inherit;
@@ -500,7 +496,7 @@ button:disabled {
   opacity: 0.5;
 }
 
-/* Default button: quiet outline. Covers every un-classed button in the app. */
+/* default button, hits every button without a class */
 button:not(.pomo-modes button):not(.user-menu-item):not(.pomo-settings-toggle),
 .btn,
 .button-file-label {
@@ -538,7 +534,7 @@ button:active:not(:disabled),
   transform: translateY(1px);
 }
 
-/* Primary: submit buttons, emphasised workflow actions, explicit .btn-primary */
+/* primary buttons */
 button[type="submit"],
 .btn-primary,
 button.primary-action,
@@ -580,7 +576,7 @@ button .icon {
   color: var(--brand);
 }
 
-/* ---------- User menu ---------- */
+/* user menu */
 .user-menu {
   position: relative;
 }
@@ -683,7 +679,7 @@ button .icon {
   }
 }
 
-/* ---------- Form controls ---------- */
+/* form controls */
 form {
   display: flex;
   flex-wrap: wrap;
@@ -766,7 +762,7 @@ select option {
   font-size: 0.875rem;
 }
 
-/* ---------- Cards ---------- */
+/* cards */
 .card,
 .content-card {
   padding: var(--space-5);
@@ -812,9 +808,7 @@ section + .content-card {
   text-decoration-color: currentColor;
 }
 
-/* ==========================================================================
-   DASHBOARD
-   ========================================================================== */
+/* DASHBOARD */
 #dashboard {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1168,7 +1162,7 @@ section + .content-card {
   margin-bottom: 2px;
 }
 
-/* ---------- Add task form ---------- */
+/* add task form */
 #task-form {
   display: block;
   padding: var(--space-5);
@@ -1375,9 +1369,7 @@ section + .content-card {
   border-top: 1px solid var(--border);
 }
 
-/* ==========================================================================
-   TABLES
-   ========================================================================== */
+/* TABLES */
 .table-wrapper {
   overflow-x: auto;
   border: 1px solid var(--border);
@@ -1448,7 +1440,7 @@ td .btn {
   white-space: nowrap;
 }
 
-/* ---------- Status pills ---------- */
+/* status pills */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -1499,9 +1491,7 @@ td .btn {
   font-weight: 700;
 }
 
-/* ==========================================================================
-   TASKS PAGE
-   ========================================================================== */
+/* TASKS PAGE */
 #task-controls {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1722,9 +1712,7 @@ tbody tr.archive-confirm-row:hover > td {
   overflow-wrap: anywhere;
 }
 
-/* ==========================================================================
-   SCHEDULES + NOTES (shared inline-form pattern)
-   ========================================================================== */
+/* SCHEDULES + NOTES (shared inline-form pattern) */
 #schedule-form,
 #note-form,
 .classroom-form {
@@ -1796,9 +1784,7 @@ tfoot td {
   border-bottom: 0;
 }
 
-/* ==========================================================================
-   SETTINGS
-   ========================================================================== */
+/* SETTINGS */
 .theme-options {
   display: flex;
   flex-wrap: wrap;
@@ -1870,9 +1856,7 @@ tfoot td {
   margin-bottom: var(--space-3);
 }
 
-/* ==========================================================================
-   PROFILE (every role)
-   ========================================================================== */
+/* PROFILE (every role) */
 .profile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1927,9 +1911,7 @@ tfoot td {
   font-weight: 600;
 }
 
-/* ==========================================================================
-   ADMIN + TEACHER
-   ========================================================================== */
+/* ADMIN + TEACHER */
 .admin-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1943,7 +1925,7 @@ tfoot td {
   letter-spacing: -0.02em;
 }
 
-/* "Waiting for approval" only stands out when someone is waiting. */
+/* only highlight approvals when someone's actually waiting */
 .stat-attention.has-items {
   border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
 }
@@ -1972,7 +1954,7 @@ tfoot td {
   align-self: flex-start;
 }
 
-/* ---------- Users page ---------- */
+/* users page */
 #users .page-head {
   align-items: center;
   margin-bottom: var(--space-4);
@@ -2074,7 +2056,7 @@ tfoot td {
   color: var(--brand);
 }
 
-/* Status: a dot + text, so meaning never depends on colour alone. */
+/* status = dot + text, not just colour */
 .account-status::before {
   content: "";
   width: 6px;
@@ -2083,7 +2065,7 @@ tfoot td {
   background: currentColor;
 }
 
-/* Active stays quiet (dot only); anything that needs attention gets a tint. */
+/* active is just a dot, the rest get a tint */
 .account-status[data-status="active"] { color: var(--brand); padding-left: 0; }
 .account-status[data-status="pending"] { color: var(--warning); background: var(--warning-soft); }
 .account-status[data-status="suspended"] { color: var(--warning); background: var(--warning-soft); }
@@ -2129,14 +2111,14 @@ tfoot td {
   font-size: 0.8125rem;
 }
 
-/* ---------- Reports (admin overview) ---------- */
+/* reports (admin overview) */
 :root {
-  --chart-bar: #0b7556;   /* validated: light surface, L 0.43-0.77, contrast >= 3:1 */
+  --chart-bar: #0b7556;
   --chart-grid: #e7e5dd;
 }
 
 :root[data-theme="dark"] {
-  --chart-bar: #2fa57d;   /* validated: dark surface, L 0.48-0.67 (brand mint is too light) */
+  --chart-bar: #2fa57d;   /* brand mint was too light here */
   --chart-grid: #243029;
 }
 
@@ -2158,12 +2140,12 @@ tfoot td {
 
 .bar-chart {
   position: relative;
-  padding: 22px 0 0 32px;      /* top: room for a value label over a full bar; left: scale */
+  padding: 22px 0 0 32px;      /* room for labels up top, scale on the left */
 }
 
 .bar-grid {
   position: absolute;
-  inset: 22px 0 24px 0;        /* plot area: between the top room and the day labels */
+  inset: 22px 0 24px 0;        /* plot area */
   pointer-events: none;
 }
 
@@ -2221,13 +2203,13 @@ tfoot td {
 .bar-mark {
   display: block;
   width: min(22px, 70%);
-  border-radius: 4px 4px 0 0;  /* rounded data end, square on the baseline */
+  border-radius: 4px 4px 0 0;  /* round top only */
   background: var(--chart-bar);
 }
 
 .bar-value {
   margin-bottom: 4px;
-  color: var(--text-2);        /* labels use text ink, never the series colour */
+  color: var(--text-2);
   font-size: 0.75rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -2319,7 +2301,7 @@ tfoot td {
   font-size: 0.75rem;
 }
 
-/* ---------- Logs ---------- */
+/* logs */
 .log-tabs {
   display: inline-flex;
   gap: 2px;
@@ -2417,7 +2399,7 @@ tfoot td {
   padding-bottom: var(--space-3);
 }
 
-/* ---------- Announcements (dashboards) ---------- */
+/* announcements (dashboards) */
 .announcements {
   display: grid;
   gap: var(--space-2);
@@ -2488,7 +2470,7 @@ tfoot td {
   color: var(--text) !important;
 }
 
-/* ---------- Admin settings ---------- */
+/* admin settings */
 .card-head-row {
   display: flex;
   align-items: flex-start;
@@ -2581,7 +2563,7 @@ tfoot td {
   margin: var(--space-2) 0 0;
 }
 
-/* ---------- Moderation ---------- */
+/* moderation */
 .admin-dialog-wide {
   width: min(52rem, calc(100% - 2rem));
 }
@@ -2667,7 +2649,7 @@ tfoot td {
   text-align: center;
 }
 
-/* ---------- Admin dialogs ---------- */
+/* admin dialogs */
 .admin-dialog {
   width: min(40rem, calc(100% - 2rem));
   max-height: min(90vh, 52rem);
@@ -2963,9 +2945,7 @@ tfoot td {
   text-align: center;
 }
 
-/* ==========================================================================
-   FOCUS MODE + POMODORO
-   ========================================================================== */
+/* FOCUS MODE + POMODORO */
 body.focus-mode {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
@@ -3237,9 +3217,7 @@ body.focus-mode #focus > h2 {
   font-size: 0.8125rem;
 }
 
-/* ==========================================================================
-   TOASTS
-   ========================================================================== */
+/* TOASTS */
 #toast-container {
   position: fixed;
   top: calc(var(--header-h) + 12px);
@@ -3289,9 +3267,7 @@ body.focus-mode #focus > h2 {
   border-left-color: var(--danger);
 }
 
-/* ==========================================================================
-   RESPONSIVE
-   ========================================================================== */
+/* RESPONSIVE */
 @media (max-width: 1180px) {
   #dashboard {
     grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -3457,7 +3433,7 @@ body.focus-mode #focus > h2 {
     font-size: 0.625rem;
   }
 
-  /* Day numbers get crowded on phones: keep every other one. */
+  /* too crowded on phones, show every other day */
   .bar-col:nth-child(even) .bar-x:not(.is-today) {
     visibility: hidden;
   }
@@ -3561,10 +3537,7 @@ body.focus-mode #focus > h2 {
   }
 }
 
-/* ==========================================================================
-   TEACHER CLASSROOM (js/teacher_classroom.js)
-   List of classes -> one class with Stream / Classwork / People tabs.
-   ========================================================================== */
+/* TEACHER CLASSROOM */
 
 /* Toolbar: search + result count */
 .tc-toolbar {
@@ -3598,7 +3571,7 @@ body.focus-mode #focus > h2 {
   margin: 0;
 }
 
-/* Class cards: equal heights, footer pinned to the bottom */
+/* class cards, same height w/ the footer at the bottom */
 .tc-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -3640,8 +3613,8 @@ body.focus-mode #focus > h2 {
   line-height: 1.3;
 }
 
-/* The title button covers the whole card, so the card is one big click target. */
-/* Beats the global button style (button:not(...)), which has higher specificity. */
+/* title button covers the whole card so the whole thing's clickable */
+/* has to beat the global button:not(...) selector */
 #teacher-classroom button.tc-card-open {
   display: -webkit-box !important;
   width: 100%;
@@ -3786,7 +3759,7 @@ body.focus-mode #focus > h2 {
   margin-top: var(--space-2);
 }
 
-/* ---------- One class ---------- */
+/* one class */
 .tc-breadcrumb {
   display: flex;
   align-items: center;
@@ -3881,7 +3854,7 @@ body.focus-mode #focus > h2 {
   height: 16px;
 }
 
-/* Destructive actions: red, and kept apart from the normal ones */
+/* danger buttons */
 .tc-btn-danger {
   color: var(--danger) !important;
 }
@@ -3927,7 +3900,7 @@ body.focus-mode #focus > h2 {
   color: var(--danger) !important;
 }
 
-/* Tabs (reuse the .log-tabs look) */
+/* tabs, same look as .log-tabs */
 .tc-tabs {
   margin-bottom: var(--space-4);
 }
@@ -3967,7 +3940,7 @@ body.focus-mode #focus > h2 {
   margin-top: 2px;
 }
 
-/* Forms: a real grid, not the global inline flex-wrap form */
+/* forms use a grid here, not the global flex-wrap */
 .tc-form-grid:not([hidden]) {
   display: grid !important;
 }
@@ -4145,7 +4118,7 @@ body.focus-mode #focus > h2 {
   height: 16px;
 }
 
-/* Task rows: details left, progress + actions right */
+/* task rows */
 .tc-task {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;

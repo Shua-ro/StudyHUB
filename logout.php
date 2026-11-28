@@ -1,19 +1,18 @@
 <?php
-// logout.php
-// Ends the PHP session completely, then sends the visitor to the login page.
+// logout: kill the session and go back to login
 
 require __DIR__ . '/includes/auth.php';   // starts the session
 
-// Record who signed out (read straight from the session; no re-validation needed).
+// log who logged out (straight from the session)
 if (!empty($_SESSION['user']['id'])) {
     $id = (int) $_SESSION['user']['id'];
     log_security_event('LOGOUT', $id, $id, 'Signed out');
 }
 
-// 1. Empty the session data on the server.
+// clear session data
 $_SESSION = [];
 
-// 2. Expire the session cookie in the browser.
+// expire the cookie
 if (ini_get('session.use_cookies')) {
     $params = session_get_cookie_params();
     setcookie(session_name(), '', [
@@ -26,10 +25,10 @@ if (ini_get('session.use_cookies')) {
     ]);
 }
 
-// 3. Delete the session file on the server.
+// delete the session file
 session_destroy();
 
-// 4. Don't let the browser show a cached logged-in page with the Back button.
+// so Back doesn't show a cached logged in page
 header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Location: login.html');
 exit;

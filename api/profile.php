@@ -1,14 +1,10 @@
 <?php
-// api/profile.php
-// Lets ANY signed-in user (every role) manage their OWN account.
-// It never takes a user id from the request: it always acts on the session's user.
-//
-// Actions:
-//   update_details   name + email (changing the email needs the current password)
-//   change_password  current password + new password
-//
-// Wrong current passwords count toward a short lockout (5 tries / 15 minutes),
-// so a computer left signed in can't be used to guess the password.
+// lets anyone logged in edit their OWN account. never takes a user id from the request,
+// always the session user.
+//   update_details  - name + email (email change needs the current password)
+//   change_password - current + new
+// wrong passwords count toward a lockout (5 tries / 15 min) so nobody can guess
+// on a computer someone left logged in
 
 require __DIR__ . '/../includes/auth.php';
 
@@ -30,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(['ok' => false, 'message' => 'Use POST.'], 405);
 }
 
-$user = api_user(true);   // the password form must still work after a reset
+$user = api_user(true);   // still has to work after a reset
 $userId = $user['id'];
 
 $input = json_decode(file_get_contents('php://input'), true);
@@ -39,14 +35,14 @@ if (!is_array($input)) {
 }
 $action = $input['action'] ?? '';
 
-// After an admin reset, choosing a new password is the only thing allowed.
+// after an admin reset, changing the password is the only thing allowed
 if ($user['must_change_password'] && $action !== 'change_password') {
     api_refuse(403, 'Choose a new password first.', 'must_change_password');
 }
 
-// ---------- helpers ----------
+// helpers
 
-/** Check the user's current password, with a lockout after repeated mistakes. */
+// checks the current password, with lockout
 function verify_current_password(mysqli $conn, int $userId, string $password): void
 {
     if ($password === '') {
@@ -84,7 +80,7 @@ function verify_current_password(mysqli $conn, int $userId, string $password): v
 
 try {
 
-    // ---------- name + email ----------
+    // name + email
     if ($action === 'update_details') {
         $name  = trim((string) ($input['name'] ?? ''));
         $email = strtolower(trim((string) ($input['email'] ?? '')));
@@ -118,7 +114,7 @@ try {
             mysqli_stmt_bind_param($stmt, 'ssi', $name, $email, $userId);
             mysqli_stmt_execute($stmt);
         } catch (mysqli_sql_exception $e) {
-            if ($e->getCode() === 1062) {   // someone took the email at the same moment
+            if ($e->getCode() === 1062) {   // someone grabbed the email at the same time
                 reply(['ok' => false, 'message' => 'Another account already uses that email.', 'field' => 'email'], 409);
             }
             throw $e;
@@ -133,7 +129,7 @@ try {
         reply(['ok' => true, 'name' => $name, 'email' => $email, 'message' => 'Your details were saved.']);
     }
 
-    // ---------- password ----------
+    // password
     if ($action === 'change_password') {
         $current = (string) ($input['currentPassword'] ?? '');
         $new     = (string) ($input['newPassword'] ?? '');
@@ -151,15 +147,14 @@ try {
             reply(['ok' => false, 'message' => 'Choose a password different from your current one.', 'field' => 'newPassword'], 422);
         }
 
-        // New hash, clear the "must change" flag, and bump the session version
-        // so every OTHER device is signed out.
+        // new hash, clear must_change, bump session version so every other device gets logged out
         $hash = password_hash($new, PASSWORD_DEFAULT);
         $stmt = mysqli_prepare($conn,
             'UPDATE users SET password_hash = ?, must_change_password = 0, session_version = session_version + 1 WHERE id = ?');
         mysqli_stmt_bind_param($stmt, 'si', $hash, $userId);
         mysqli_stmt_execute($stmt);
 
-        // ...but keep THIS device signed in.
+        // ...but keep this one logged in
         $stmt = mysqli_prepare($conn, 'SELECT session_version FROM users WHERE id = ?');
         mysqli_stmt_bind_param($stmt, 'i', $userId);
         mysqli_stmt_execute($stmt);

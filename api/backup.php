@@ -1,12 +1,8 @@
 <?php
-// api/backup.php
-// Full database backup as a .sql file (Super Admin only: backup.full).
-//
-// The file contains EVERYTHING, including password hashes and the security log,
-// so every download is recorded in the security log. Restore it with
-// phpMyAdmin -> Import (it recreates every table).
-//
-// POST only (a form submit), so a link preview or prefetch can never trigger it.
+// full db dump as .sql, super admin only.
+// it has everything incl. password hashes, so every download gets logged.
+// restore with phpMyAdmin -> Import.
+// POST only so a link preview/prefetch can't trigger it
 
 require __DIR__ . '/../includes/auth.php';
 
@@ -54,7 +50,7 @@ foreach ($tables as $table) {
     echo "-- ----------------------------------------\n-- Table `$safe`\n-- ----------------------------------------\n";
     echo "DROP TABLE IF EXISTS `$safe`;\n$create;\n\n";
 
-    // Rows in batches of 100 per INSERT.
+    // 100 rows per INSERT
     $result = mysqli_query($conn, "SELECT * FROM `$safe`", MYSQLI_USE_RESULT);
     $columns = null;
     $batch = [];

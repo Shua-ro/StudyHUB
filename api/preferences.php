@@ -1,10 +1,8 @@
 <?php
-// api/preferences.php
-// Save user preferences to the database.
-// Actions:  update
+// saves user preferences (update only)
 
 require __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';   // (auth.php already loads it)
+require_once __DIR__ . '/../includes/db.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -19,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(['ok' => false, 'message' => 'Use POST.'], 405);
 }
 
-$user = api_user();   // 401 if signed out, 403 if a password change is required
+$user = api_user();
 $userId = (int) $user['id'];
 
 $input = json_decode(file_get_contents('php://input'), true);

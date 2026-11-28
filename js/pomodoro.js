@@ -1,16 +1,14 @@
-// pomodoro.js - Pomodoro timer feature implementation
+// pomodoro timer
 
 (function() {
   'use strict';
 
-  // ============================================================
-  // State & Configuration
-  // ============================================================
+  // state & configuration
   const STORAGE_KEY = 'studyhub-pomodoro-v1';
   const DEFAULT_DURATIONS = {
-    focus: 25 * 60,    // 25 minutes in seconds
-    short: 5 * 60,     // 5 minutes in seconds
-    long: 15 * 60      // 15 minutes in seconds
+    focus: 25 * 60,    // 25 min
+    short: 5 * 60,     // 5 min
+    long: 15 * 60      // 15 min
   };
 
   let state = {
@@ -24,13 +22,11 @@
     durations: { ...DEFAULT_DURATIONS },
     intention: '',
     timerId: null,
-    startTime: null,         // timestamp when timer started (for accuracy)
+    startTime: null,         // when it started, for accurate timing
     pausedTimeRemaining: null // time remaining when paused
   };
 
-  // ============================================================
-  // DOM Elements
-  // ============================================================
+  // dom elements
   const elements = {
     clock: null,
     timeDisplay: null,
@@ -75,11 +71,9 @@
     elements.messageDisplay = document.getElementById('pomo-message');
   }
 
-  // ============================================================
-  // Persistence
-  // ============================================================
+  // persistence
   function loadState() {
-    // First, load from server if available (window.STUDYHUB_POMODORO set by PHP in index.php)
+    // server prefs first (STUDYHUB_POMODORO from index.php)
     if (window.STUDYHUB_POMODORO && typeof window.STUDYHUB_POMODORO === 'object') {
       const serverPrefs = window.STUDYHUB_POMODORO;
       state.durations = {
@@ -87,22 +81,22 @@
         short: serverPrefs.shortDuration || DEFAULT_DURATIONS.short,
         long: serverPrefs.longDuration || DEFAULT_DURATIONS.long,
       };
-      // Reset timer to new durations if not running
+      // reset to the new durations if it's not running
       if (!state.isRunning) {
         state.timeRemaining = getCurrentDuration();
       }
     }
 
-    // Then, load from localStorage (overrides server for session-specific state)
+    // then localStorage, which wins for session stuff
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Merge with defaults, preserving any new fields
+        // merge w/ defaults so new fields still exist
         state = { ...state, ...parsed };
-        // Ensure durations object exists (localStorage takes precedence for durations)
+        // make sure durations exists
         state.durations = { ...state.durations, ...(parsed.durations || {}) };
-        // Reset timer if it was running (don't persist running state)
+        // don't restore a running timer
         state.isRunning = false;
         state.timerId = null;
         state.startTime = null;
@@ -111,7 +105,7 @@
     } catch (e) {
       console.warn('[Pomodoro] Failed to load state:', e);
     }
-    // Daily reset check
+    // new day = reset
     checkDailyReset();
   }
 
@@ -144,9 +138,7 @@
     }
   }
 
-  // ============================================================
-  // Timer Logic
-  // ============================================================
+  // timer logic
   function getCurrentDuration() {
     return state.durations[state.mode] || DEFAULT_DURATIONS[state.mode];
   }
@@ -183,32 +175,29 @@
     elements.phaseLabel.textContent = getModeLabel();
     elements.timerStatus.textContent = getStatusText();
 
-    // Update progress ring (CSS variable)
+    // progress ring
     if (elements.clock) {
       const total = getCurrentDuration();
       const progress = total > 0 ? ((total - state.timeRemaining) / total) * 100 : 0;
       elements.clock.style.setProperty('--pomo-progress', `${progress}%`);
     }
 
-    // Update start button text
     if (elements.startBtn) {
       elements.startBtn.textContent = state.isRunning ? 'Pause' : 'Start focusing';
       elements.startBtn.classList.toggle('pomo-running', state.isRunning);
     }
 
-    // Update mode buttons
     elements.modeButtons?.forEach(btn => {
       const isActive = btn.dataset.pomoMode === state.mode;
       btn.setAttribute('aria-pressed', isActive);
       btn.classList.toggle('active', isActive);
     });
 
-    // Update stats
     if (elements.sessionsDisplay) elements.sessionsDisplay.textContent = state.sessionsToday;
     if (elements.minutesDisplay) elements.minutesDisplay.textContent = state.minutesToday;
     if (elements.cycleDisplay) elements.cycleDisplay.textContent = `${state.cycle} / 4`;
 
-    // Dashboard "Study today" summary
+    // dashboard "study today"
     const dashStudy = document.getElementById('dash-study-summary');
     if (dashStudy) {
       const minutes = state.minutesToday;
@@ -218,12 +207,10 @@
         `${sessions} focus session${sessions === 1 ? '' : 's'}`;
     }
 
-    // Update intention input
     if (elements.intentionInput) {
       elements.intentionInput.value = state.intention;
     }
 
-    // Update duration inputs
     if (elements.focusDurationInput) elements.focusDurationInput.value = Math.round(state.durations.focus / 60);
     if (elements.shortDurationInput) elements.shortDurationInput.value = Math.round(state.durations.short / 60);
     if (elements.longDurationInput) elements.longDurationInput.value = Math.round(state.durations.long / 60);
@@ -234,7 +221,7 @@
 
     state.isRunning = true;
     state.startTime = Date.now();
-    // If we have paused time remaining, use it; otherwise use current state.timeRemaining
+    // use the paused time if there is one
     if (state.pausedTimeRemaining !== null) {
       state.timeRemaining = state.pausedTimeRemaining;
       state.pausedTimeRemaining = null;
@@ -253,7 +240,6 @@
       clearInterval(state.timerId);
       state.timerId = null;
     }
-    // Calculate precise remaining time
     const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
     state.pausedTimeRemaining = Math.max(0, state.timeRemaining - elapsed);
     state.startTime = null;
@@ -272,7 +258,7 @@
   function tick() {
     if (!state.isRunning) return;
 
-    // Use precise time calculation instead of decrementing
+    // work it out from the start time, decrementing drifts
     const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
     const initialDuration = getCurrentDuration();
     state.timeRemaining = Math.max(0, initialDuration - elapsed);
@@ -289,11 +275,11 @@
     playSound('complete');
 
     if (state.mode === 'focus') {
-      // Completed a focus session
+      // finished focus
       state.sessionsToday++;
       state.minutesToday += Math.round(state.durations.focus / 60);
 
-      // Check if we should go to long break (after 4 focus sessions)
+      // long break every 4 focus sessions
       if (state.cycle >= 4) {
         state.mode = 'long';
         state.cycle = 1;
@@ -304,14 +290,13 @@
         showMessage('Focus session complete! Take a short break.');
       }
     } else {
-      // Completed a break, go back to focus
+      // finished a break, back to focus
       state.mode = 'focus';
       if (state.mode === 'focus' && state.cycle === 1) {
         showMessage('Break over. Ready to focus again?');
       }
     }
 
-    // Reset timer for new mode
     state.timeRemaining = getCurrentDuration();
     state.pausedTimeRemaining = null;
     saveState();
@@ -333,7 +318,7 @@
     pauseTimer();
 
     if (state.mode === 'focus') {
-      // Skip focus -> go to appropriate break
+      // skipping focus -> break
       if (state.cycle >= 4) {
         state.mode = 'long';
         state.cycle = 1;
@@ -344,7 +329,7 @@
         showMessage('Focus session skipped. Short break time.');
       }
     } else {
-      // Skip break -> go to focus
+      // skipping break -> focus
       state.mode = 'focus';
       showMessage('Break skipped. Back to focus!');
     }
@@ -356,7 +341,7 @@
   }
 
   function setMode(mode) {
-    if (state.isRunning) return; // Don't allow mode change while running
+    if (state.isRunning) return; // no switching mid-timer
     if (mode === state.mode) return;
 
     state.mode = mode;
@@ -366,9 +351,7 @@
     updateDisplay();
   }
 
-  // ============================================================
-  // Settings
-  // ============================================================
+  // settings
   function toggleSettings() {
     const isExpanded = elements.settingsToggle.getAttribute('aria-expanded') === 'true';
     elements.settingsToggle.setAttribute('aria-expanded', !isExpanded);
@@ -384,7 +367,7 @@
 
     state.durations = { focus, short, long };
 
-    // If not running, update current timer
+    // not running? update it now
     if (!state.isRunning) {
       state.timeRemaining = getCurrentDuration();
     }
@@ -431,17 +414,13 @@
     showMessage('Default durations restored.');
   }
 
-  // ============================================================
-  // Intention
-  // ============================================================
+  // intention
   function saveIntention() {
     state.intention = elements.intentionInput.value.trim().slice(0, 100);
     saveState();
   }
 
-  // ============================================================
-  // Audio Feedback
-  // ============================================================
+  // audio feedback
   const audioContext = typeof AudioContext !== 'undefined' ? new AudioContext() : null;
   const oscillatorCache = {};
 
@@ -456,7 +435,7 @@
 
       switch (type) {
         case 'start': {
-          // Gentle rising tone
+          // rising tone
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sine';
@@ -470,7 +449,7 @@
           break;
         }
         case 'pause': {
-          // Soft descending tone
+          // falling tone
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sine';
@@ -484,7 +463,7 @@
           break;
         }
         case 'complete': {
-          // Celebration chime - three notes
+          // little 3 note chime
           const notes = [523, 659, 784]; // C5, E5, G5
           notes.forEach((freq, i) => {
             const osc = ctx.createOscillator();
@@ -502,24 +481,20 @@
         }
       }
     } catch (e) {
-      // Silently fail if audio not available
+      // no audio, oh well
     }
   }
 
-  // ============================================================
-  // Messages
-  // ============================================================
+  // messages
   function showMessage(text) {
     if (elements.messageDisplay) {
       elements.messageDisplay.textContent = text;
     }
   }
 
-  // ============================================================
-  // Keyboard Shortcuts
-  // ============================================================
+  // keyboard shortcuts
   function handleKeydown(event) {
-    // Only handle shortcuts when pomodoro panel is visible and not typing in input
+    // only when the pomodoro panel is showing and you're not typing
     const activeElement = document.activeElement;
     const isTyping = activeElement && (
       activeElement.tagName === 'INPUT' ||
@@ -527,9 +502,8 @@
       activeElement.isContentEditable
     );
 
-    // Space to start/pause (but not when typing)
+    // space = start/pause
     if (event.code === 'Space' && !isTyping) {
-      // Check if pomodoro panel is visible
       const focusSection = document.getElementById('focus');
       if (focusSection && !focusSection.hidden) {
         event.preventDefault();
@@ -537,7 +511,7 @@
       }
     }
 
-    // R to reset
+    // r = reset
     if (event.code === 'KeyR' && !isTyping && !event.ctrlKey && !event.metaKey) {
       const focusSection = document.getElementById('focus');
       if (focusSection && !focusSection.hidden) {
@@ -546,7 +520,7 @@
       }
     }
 
-    // S to skip
+    // s = skip
     if (event.code === 'KeyS' && !isTyping && !event.ctrlKey && !event.metaKey) {
       const focusSection = document.getElementById('focus');
       if (focusSection && !focusSection.hidden) {
@@ -555,7 +529,7 @@
       }
     }
 
-    // 1/2/3 for mode switching (when not running)
+    // 1/2/3 = switch mode (only when stopped)
     if (!state.isRunning && !isTyping && !event.ctrlKey && !event.metaKey) {
       const focusSection = document.getElementById('focus');
       if (focusSection && !focusSection.hidden) {
@@ -573,35 +547,28 @@
     }
   }
 
-  // ============================================================
-  // Event Binding
-  // ============================================================
+  // event binding
   function bindEvents() {
-    // Timer controls
     elements.startBtn?.addEventListener('click', toggleTimer);
     elements.resetBtn?.addEventListener('click', resetTimer);
     elements.skipBtn?.addEventListener('click', skipTimer);
 
-    // Mode buttons
     elements.modeButtons?.forEach(btn => {
       btn.addEventListener('click', () => {
         setMode(btn.dataset.pomoMode);
       });
     });
 
-    // Settings
     elements.settingsToggle?.addEventListener('click', toggleSettings);
     elements.settingsForm?.addEventListener('submit', saveDurations);
     elements.defaultsBtn?.addEventListener('click', restoreDefaults);
 
-    // Intention input
     elements.intentionInput?.addEventListener('blur', saveIntention);
     elements.intentionInput?.addEventListener('change', saveIntention);
 
-    // Keyboard shortcuts (global)
     document.addEventListener('keydown', handleKeydown);
 
-    // Handle visibility change (pause timer when tab hidden)
+    // pause when the tab's hidden
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && state.isRunning) {
         pauseTimer();
@@ -610,13 +577,10 @@
     });
   }
 
-  // ============================================================
-  // Initialization
-  // ============================================================
+  // initialization
   function init() {
     cacheElements();
 
-    // Check if pomodoro panel exists in DOM
     if (!elements.clock) {
       console.log('[Pomodoro] Panel not found in DOM, skipping initialization');
       return;
@@ -629,14 +593,13 @@
     console.log('[Pomodoro] Initialized successfully');
   }
 
-  // Auto-initialize when DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
 
-  // Expose for debugging
+  // for poking at it in the console
   window.StudyHubPomodoro = {
     getState: () => ({ ...state }),
     start: startTimer,

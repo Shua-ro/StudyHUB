@@ -1,10 +1,6 @@
 <?php
-// api/signup.php
-// Creates a new account. Receives JSON, answers with JSON.
-//
-// Students are active immediately and signed in.
-// Teachers start as "pending" and must be approved by an Admin before they
-// can sign in (teachers manage classrooms, so a person checks them first).
+// signup. students are active right away and get logged in.
+// teachers start pending until an admin approves them (they run classrooms so someone checks first)
 
 require __DIR__ . '/../includes/auth.php';
 require __DIR__ . '/../includes/settings.php';
@@ -18,7 +14,7 @@ function reply($data, $code = 200)
     exit;
 }
 
-// GET: which sign-ups are open (signup.html uses this to adapt the form).
+// GET: which signups are open (signup.html uses this)
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $settings = get_settings($conn);
     reply([
@@ -31,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(['error' => 'Use POST.'], 405);
 }
 
-// Super Admin switches (Settings): enforced here, not just hidden on the page.
+// super admin switches, enforced here not just hidden on the page
 if (!setting_on($conn, 'allow_signups')) {
     reply(['error' => 'Sign-ups are closed right now. Ask an administrator for an account.'], 403);
 }
@@ -51,7 +47,7 @@ if (!filter_var($username, FILTER_VALIDATE_EMAIL) || strlen($username) > 190) {
 if (strlen($password) < 8) {
     reply(['error' => 'Password must be at least 8 characters.'], 422);
 }
-// Signup can only make students and teachers. Admins are made by hand in the database.
+// signup only makes students/teachers, admins get made in the db by hand
 if ($role !== 'student' && $role !== 'teacher') {
     $role = 'student';
 }
@@ -59,7 +55,7 @@ if ($role === 'teacher' && !setting_on($conn, 'allow_teacher_signups')) {
     reply(['error' => 'Teacher sign-ups are closed right now. Ask an administrator for a teacher account.'], 403);
 }
 
-// Is the email already used?
+// email taken?
 $stmt = mysqli_prepare($conn, 'SELECT id FROM users WHERE username = ?');
 mysqli_stmt_bind_param($stmt, 's', $username);
 mysqli_stmt_execute($stmt);
@@ -77,7 +73,7 @@ try {
     mysqli_stmt_bind_param($stmt, 'sssss', $username, $name, $role, $status, $hash);
     mysqli_stmt_execute($stmt);
 } catch (mysqli_sql_exception $e) {
-    if ($e->getCode() === 1062) {   // duplicate key (two signups at the same time)
+    if ($e->getCode() === 1062) {   // duplicate key (two signups at once)
         reply(['error' => 'An account with this email already exists.'], 409);
     }
     reply(['error' => 'Could not create the account. Did you import db/studyhub.sql (or run the db/migrate_*.sql files on an older database)?'], 500);
@@ -86,7 +82,7 @@ try {
 $userId = (int) mysqli_insert_id($conn);
 log_security_event('SIGNUP', $userId, $userId, role_label($role) . " account created ($status)");
 
-// Teachers wait for approval: no session yet.
+// teachers wait for approval, no session
 if ($status === 'pending') {
     reply([
         'ok'      => true,
@@ -95,7 +91,7 @@ if ($status === 'pending') {
     ], 201);
 }
 
-// Students are signed in straight away.
+// students get logged in straight away
 session_regenerate_id(true);
 $_SESSION['user'] = ['id' => $userId, 'name' => $name, 'role' => $role, 'v' => 0];
 log_security_event('LOGIN', $userId, $userId, 'Signed in after signup');

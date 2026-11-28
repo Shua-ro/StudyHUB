@@ -1,16 +1,11 @@
 <?php
-// api/tasks.php
-// The page sends task changes here. This file saves them in the database.
-// It receives JSON and answers with JSON.
-//
-// Actions:  create  |  update  |  status  |  delete (archived tasks only)
+// task create/update/status/delete (delete = archived only). JSON in, JSON out
 
 require __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';   // (auth.php already loads it)
+require_once __DIR__ . '/../includes/db.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Send an answer and stop.
 function reply($data, $code = 200)
 {
     http_response_code($code);
@@ -24,7 +19,7 @@ function task_number($id)
     return (int) str_replace('TASK-', '', (string) $id);
 }
 
-// Get one task, but only if it belongs to this user. Returns null if not found.
+// only returns it if it's theirs, otherwise null
 function find_task($conn, $taskId, $userId)
 {
     $stmt = mysqli_prepare($conn, 'SELECT id, title, status FROM tasks WHERE id = ? AND user_id = ?');
@@ -34,14 +29,13 @@ function find_task($conn, $taskId, $userId)
     return mysqli_fetch_assoc($result);
 }
 
-// Keep a date only if it looks like 2026-12-31. Otherwise return null.
+// "2026-12-31" or null
 function clean_date($value)
 {
     $value = (string) $value;
     return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : null;
 }
 
-// Write an audit log entry.
 function write_audit($conn, $userId, $action, $entityType, $entityId, $details = '')
 {
     $stmt = mysqli_prepare($conn,
@@ -50,17 +44,15 @@ function write_audit($conn, $userId, $action, $entityType, $entityId, $details =
     mysqli_stmt_execute($stmt);
 }
 
-// Escape % and _ so they are matched literally inside LIKE.
+// escape % and _ for LIKE
 function like_escape($value)
 {
     return addcslashes($value, '%_\\');
 }
 
-// Search this user's tasks in the database.
-// Every word typed must appear in the title, subject, description, tags,
-// priority, status, due date or id. Best matches first (title start > title
-// word > title anywhere > subject > anything else), then by due date.
-// Returns ['ids' => [...active task ids, best first], 'archived' => count].
+// search the user's tasks. every word has to show up somewhere (title, subject, desc, tags, etc).
+// ranking: title starts with > title word > title anywhere > subject > rest, then due date.
+// returns ['ids' => [...], 'archived' => count]
 function search_tasks($conn, $userId, $query)
 {
     $query  = str_replace(['-', '_'], ' ', $query);
@@ -114,12 +106,10 @@ function search_tasks($conn, $userId, $query)
     return ['ids' => $ids, 'archived' => $archived];
 }
 
-// ---------- Check the request ----------
-
-$user = api_user();   // 401 if signed out, 403 if a password change is required
+$user = api_user();
 $userId = (int) $user['id'];
 
-// ---------- SEARCH tasks (GET api/tasks.php?q=...) ----------
+// search (GET ?q=...)
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $q = mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 100);
     try {
@@ -146,7 +136,7 @@ $statuses   = ['To do', 'In progress', 'In review', 'Done', 'Archived'];
 
 try {
 
-    // ---------- CREATE a task ----------
+    // create
     if ($action === 'create') {
         $t = $input['task'] ?? [];
 
@@ -176,7 +166,7 @@ try {
         reply(['ok' => true, 'id' => $newId]);
     }
 
-    // ---------- UPDATE the details of a task ----------
+    // update details
     if ($action === 'update') {
         $taskId = task_number($input['id'] ?? '');
         if (!find_task($conn, $taskId, $userId)) {
@@ -206,7 +196,7 @@ try {
         reply(['ok' => true]);
     }
 
-    // ---------- Change the STATUS of a task ----------
+    // change status
     if ($action === 'status') {
         $taskId = task_number($input['id'] ?? '');
         $task = find_task($conn, $taskId, $userId);
@@ -221,18 +211,16 @@ try {
         $previous = $task['status'];
         $label    = mb_substr((string) ($input['actionLabel'] ?? ''), 0, 60);
 
-        // Save the new status
         $stmt = mysqli_prepare($conn, 'UPDATE tasks SET status = ? WHERE id = ? AND user_id = ?');
         mysqli_stmt_bind_param($stmt, 'sii', $next, $taskId, $userId);
         mysqli_stmt_execute($stmt);
 
-        // Save one line in the history
+        // history entry
         $stmt = mysqli_prepare($conn,
             'INSERT INTO task_history (task_id, previous_status, next_status, action_label) VALUES (?, ?, ?, ?)');
         mysqli_stmt_bind_param($stmt, 'isss', $taskId, $previous, $next, $label);
         mysqli_stmt_execute($stmt);
 
-        // Audit log
         $entityId = 'TASK-' . $taskId;
         $auditAction = ($next === 'Archived') ? 'ARCHIVE' : 'STATUS_CHANGE';
         write_audit($conn, $userId, $auditAction, 'task', $entityId, "$previous → $next ($label)");
@@ -240,20 +228,19 @@ try {
         reply(['ok' => true]);
     }
 
-    // ---------- DELETE an archived task (permanent) ----------
+    // delete an archived task (permanent)
     if ($action === 'delete') {
         $taskId = task_number($input['id'] ?? '');
         $task = find_task($conn, $taskId, $userId);
         if (!$task) {
             reply(['ok' => false, 'message' => 'Task not found.'], 404);
         }
-        // Only finished, archived work can be deleted. Active tasks must be
-        // completed and archived first.
+        // only archived stuff can be deleted, active tasks have to be done + archived first
         if ($task['status'] !== 'Archived') {
             reply(['ok' => false, 'message' => 'Only archived tasks can be deleted.'], 409);
         }
 
-        // task_history rows are removed automatically (ON DELETE CASCADE).
+        // history rows get cascaded
         $stmt = mysqli_prepare($conn, 'DELETE FROM tasks WHERE id = ? AND user_id = ?');
         mysqli_stmt_bind_param($stmt, 'ii', $taskId, $userId);
         mysqli_stmt_execute($stmt);

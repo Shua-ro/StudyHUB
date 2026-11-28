@@ -1,9 +1,8 @@
 <?php
-// Functions that read audit log from the database.
 
 require_once __DIR__ . '/db.php';
 
-// Get audit log for one user (most recent first, limited to 200).
+// user's audit log, newest first, max 200
 function get_audit_for_user($conn, $userId, $limit = 200)
 {
     $sql = 'SELECT id, action, entity_type, entity_id, details, created_at
@@ -22,7 +21,7 @@ function get_audit_for_user($conn, $userId, $limit = 200)
         $audit[] = [
             'id'        => (int) $row['id'],
             'timestamp' => str_replace(' ', 'T', $row['created_at']),
-            // Everything in your own trail was done by you, except moderation.
+            // everything in your own trail is you, except moderation stuff
             'actor'     => $row['action'] === 'MODERATION_DELETE' ? 'An administrator' : 'You',
             'action'    => $row['action'],
             'targetId'  => $row['entity_id'],

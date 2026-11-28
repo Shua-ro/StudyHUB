@@ -15,7 +15,7 @@ if ($username === '' || $password === '') {
 $pdo = db();
 $ip  = $_SERVER['REMOTE_ADDR'] ?? '';
 
-// Rate limit: too many recent failures for this account name.
+// rate limit per account name
 $window = (int) LOCKOUT_SECONDS;
 $stmt = $pdo->prepare(
     "SELECT COUNT(*) FROM login_attempts
@@ -33,7 +33,7 @@ $row = $stmt->fetch();
 if ($row) {
     $ok = password_verify($password, $row['password_hash']);
 } else {
-    password_hash($password, PASSWORD_DEFAULT); // similar timing for unknown users
+    password_hash($password, PASSWORD_DEFAULT); // so unknown users take about as long (timing)
     $ok = false;
 }
 
@@ -42,7 +42,7 @@ if (!$ok) {
     json_out(401, ['error' => 'Incorrect username or password.']);
 }
 
-// Admins may sign in through either role; everyone else must match.
+// admins can log in as either role, everyone else has to match
 if ($row['role'] !== 'admin' && $row['role'] !== $role) {
     json_out(403, ['error' => 'The selected role does not match this account.']);
 }

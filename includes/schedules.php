@@ -1,11 +1,8 @@
 <?php
-// Functions that read schedules from the database.
-// Only this file knows the names of the schedule columns.
 
 require_once __DIR__ . '/db.php';
 
-// Get all schedules of one user.
-// Each schedule is returned in the same shape that app.js uses.
+// all schedules for a user, shaped like app.js expects
 function get_schedules_for_user($conn, $userId)
 {
     $sql = 'SELECT id, day, start_time, end_time, class_name, course_code, instructor, created_at

@@ -1,9 +1,5 @@
--- StudyHub: app-wide settings + announcements (step 6 of the roles work).
--- Run this in phpMyAdmin (inside the studyhub database). SAFE TO RE-RUN.
--- (New install? Import db/studyhub.sql instead - it already has all of this.)
---
---   app_settings   key/value switches (Super Admin): sign-ups on/off, etc.
---   announcements  messages Admins post on users' dashboards
+-- app settings + announcements. run in phpMyAdmin inside studyhub, safe to re-run.
+-- fresh install? import studyhub.sql instead
 
 USE studyhub;
 
@@ -15,7 +11,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   PRIMARY KEY (setting_key)
 ) ENGINE=InnoDB;
 
--- Defaults: everything open, as before. INSERT IGNORE keeps any value already chosen.
+-- defaults: everything open. INSERT IGNORE keeps whatever was already set
 INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES
   ('allow_signups', '1'),
   ('allow_teacher_signups', '1');

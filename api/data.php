@@ -1,17 +1,11 @@
 <?php
-// api/data.php
-// Replaces ALL of the logged-in user's tasks, schedules and notes in one go.
-// It receives JSON and answers with JSON.
-//
-// Actions:
-//   import  - replace the user's data with the contents of a backup file
-//   reset   - delete the user's data and restore default settings
-//
-// Both run inside one database transaction: either everything is replaced,
-// or (on any error) nothing changes at all.
+// import/reset for all of a user's tasks, schedules and notes. JSON in, JSON out.
+//   import - replace everything with a backup file
+//   reset  - wipe it all + default settings
+// runs in one transaction so it either fully works or nothing changes
 
 require __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';   // (auth.php already loads it)
+require_once __DIR__ . '/../includes/db.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -21,9 +15,8 @@ const MAX_SCHEDULES  = 500;
 const MAX_NOTES      = 2000;
 const MAX_HISTORY    = 200;               // status changes kept per task
 
-// Backup file formats this server understands (schemaVersion in the JSON,
-// SCHEMA_VERSION in js/app.js). Add a version here only together with the code
-// that reads it; older versions would be converted in clean_backup().
+// backup versions we can read (schemaVersion in the JSON, SCHEMA_VERSION in app.js).
+// only add one together with code that handles it, old ones get converted in clean_backup()
 const SUPPORTED_BACKUP_VERSIONS = [1];
 
 const PRIORITIES = ['Low', 'Medium', 'High'];
@@ -37,10 +30,10 @@ function reply($data, $code = 200)
     exit;
 }
 
-// Thrown when the backup file has a bad record. The message is shown to the user.
+// bad record in the backup, message goes straight to the user
 class ImportError extends Exception {}
 
-// ---------- Small cleaning helpers ----------
+// helpers
 
 function text($value, $max)
 {
@@ -85,7 +78,7 @@ function pick($value, $allowed, $default)
     return in_array($value, $allowed, true) ? $value : $default;
 }
 
-// ---------- Validate the whole backup BEFORE touching the database ----------
+// validate the whole backup before touching the db
 
 function clean_backup($data)
 {
@@ -191,11 +184,11 @@ function clean_backup($data)
     return compact('tasks', 'schedules', 'notes', 'preferences');
 }
 
-// ---------- Write: wipe this user's data, then insert the cleaned backup ----------
+// wipe this user's data, then insert the cleaned backup
 
 function replace_user_data($conn, $userId, $clean)
 {
-    // Delete current data. task_history rows go with their tasks (ON DELETE CASCADE).
+    // task_history goes with the tasks (cascade)
     foreach (['tasks', 'schedules', 'notes'] as $table) {
         $stmt = mysqli_prepare($conn, "DELETE FROM $table WHERE user_id = ?");
         mysqli_stmt_bind_param($stmt, 'i', $userId);
@@ -263,17 +256,14 @@ function write_audit($conn, $userId, $action, $details)
     mysqli_stmt_execute($stmt);
 }
 
-// ---------- Check the request ----------
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(['ok' => false, 'message' => 'Use POST.'], 405);
 }
 
-$user = api_user();   // 401 if signed out, 403 if a password change is required
+$user = api_user();
 $userId = (int) $user['id'];
 if ($userId < 1) {
-    // Guard against a very old users table whose id isn't a number
-    // (db/studyhub.sql creates it correctly).
+    // in case of a really old users table where id isn't a number
     reply(['ok' => false, 'message' => 'Your account id is invalid. The users table is outdated: recreate it from db/studyhub.sql, then sign in again.'], 409);
 }
 
@@ -288,7 +278,6 @@ if (!is_array($input)) {
 
 $action = $input['action'] ?? '';
 
-// Build the cleaned data set for the chosen action.
 try {
     if ($action === 'import') {
         $version = $input['data']['schemaVersion'] ?? null;
@@ -306,7 +295,6 @@ try {
     reply(['ok' => false, 'message' => $e->getMessage()], 422);
 }
 
-// Write it inside one transaction.
 try {
     mysqli_begin_transaction($conn);
 

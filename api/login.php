@@ -1,21 +1,17 @@
 <?php
-// api/login.php
-// Checks username + password. Receives JSON, answers with JSON.
-//
-// Order of checks (so we never reveal an account's status to someone
-// who doesn't know its password):
-//   1. too many recent failures?      -> 429
-//   2. wrong username or password?    -> 401 (same message for both)
-//   3. account pending/suspended/banned? -> 403 with the reason
-//   4. regular user picked the wrong role button? -> 403
-//   5. success: start the session
+// login. the order matters so we never leak an account's status to someone without the password:
+//   1. too many fails -> 429
+//   2. wrong user/pass -> 401 (same msg for both)
+//   3. pending/suspended/banned -> 403
+//   4. picked the wrong role button -> 403
+//   5. ok, start the session
 
 require __DIR__ . '/../includes/auth.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-const MAX_FAILED_LOGINS = 5;     // wrong tries allowed...
-const LOCKOUT_SECONDS   = 900;   // ...within this many seconds (15 minutes)
+const MAX_FAILED_LOGINS = 5;     // max wrong tries
+const LOCKOUT_SECONDS   = 900;   // in 15 min
 
 function reply($data, $code = 200)
 {
@@ -40,7 +36,7 @@ if ($username === '' || $password === '') {
 $ip = $_SERVER['REMOTE_ADDR'] ?? '';
 
 try {
-    // 1. Too many recent wrong passwords for this username?
+    // 1. locked out?
     $window = (int) LOCKOUT_SECONDS;
     $stmt = mysqli_prepare(
         $conn,
@@ -55,7 +51,7 @@ try {
         reply(['error' => 'Too many attempts. Please try again in a few minutes.'], 429);
     }
 
-    // 2. Find the account and check the password.
+    // 2. find account + check password
     $stmt = mysqli_prepare($conn,
         'SELECT id, display_name, role, status, status_reason, password_hash, session_version
          FROM users WHERE username = ?');
@@ -76,7 +72,7 @@ try {
 
     $userId = (int) $user['id'];
 
-    // 3. Is the account allowed to sign in?
+    // 3. is the account allowed in?
     if ($user['status'] !== 'active') {
         $messages = [
             'pending'   => 'Your account is waiting for an administrator to approve it.',
@@ -95,12 +91,12 @@ try {
         reply(['error' => $message, 'status' => $user['status']], 403);
     }
 
-    // 4. Admins and Super Admins can use either role button; everyone else must pick their own.
+    // 4. admins can use either role button, everyone else has to pick their own
     if (!is_staff_role($user['role']) && $user['role'] !== $role) {
         reply(['error' => 'The selected role does not match this account.'], 403);
     }
 
-    // Success: forget the failed tries.
+    // worked, clear the failed tries
     $stmt = mysqli_prepare($conn, 'DELETE FROM login_attempts WHERE identifier = ?');
     mysqli_stmt_bind_param($stmt, 's', $username);
     mysqli_stmt_execute($stmt);
@@ -108,8 +104,8 @@ try {
     reply(['error' => 'Database error. Did you import db/studyhub.sql (or run the db/migrate_*.sql files on an older database)?'], 500);
 }
 
-// 5. Start the session. Only the id and session version matter; everything
-//    else is re-read from the database on each request (includes/auth.php).
+// 5. start the session. only the id + session version get stored,
+//    everything else is re-read from the db every request (auth.php)
 session_regenerate_id(true);
 $_SESSION['user'] = [
     'id'   => $userId,

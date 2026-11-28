@@ -1,16 +1,11 @@
 <?php
-// api/notes.php
-// The page sends note changes here. This file saves them in the database.
-// It receives JSON and answers with JSON.
-//
-// Actions:  create  |  update  |  delete
+// note create/update/delete. JSON in, JSON out
 
 require __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';   // (auth.php already loads it)
+require_once __DIR__ . '/../includes/db.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Send an answer and stop.
 function reply($data, $code = 200)
 {
     http_response_code($code);
@@ -24,7 +19,7 @@ function note_number($id)
     return (int) str_replace('NOTE-', '', (string) $id);
 }
 
-// Get one note, but only if it belongs to this user. Returns null if not found.
+// only returns it if it's theirs, otherwise null
 function find_note($conn, $noteId, $userId)
 {
     $stmt = mysqli_prepare($conn, 'SELECT id FROM notes WHERE id = ? AND user_id = ?');
@@ -34,7 +29,6 @@ function find_note($conn, $noteId, $userId)
     return mysqli_fetch_assoc($result);
 }
 
-// Write an audit log entry.
 function write_audit($conn, $userId, $action, $entityType, $entityId, $details = '')
 {
     $stmt = mysqli_prepare($conn,
@@ -43,13 +37,11 @@ function write_audit($conn, $userId, $action, $entityType, $entityId, $details =
     mysqli_stmt_execute($stmt);
 }
 
-// ---------- Check the request ----------
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(['ok' => false, 'message' => 'Use POST.'], 405);
 }
 
-$user = api_user();   // 401 if signed out, 403 if a password change is required
+$user = api_user();
 $userId = (int) $user['id'];
 
 $input = json_decode(file_get_contents('php://input'), true);
@@ -61,7 +53,7 @@ $action = $input['action'] ?? '';
 
 try {
 
-    // ---------- CREATE a note ----------
+    // create
     if ($action === 'create') {
         $n = $input['note'] ?? [];
 
@@ -86,7 +78,7 @@ try {
         reply(['ok' => true, 'id' => $newId]);
     }
 
-    // ---------- UPDATE a note ----------
+    // update
     if ($action === 'update') {
         $noteId = note_number($input['id'] ?? '');
         if (!find_note($conn, $noteId, $userId)) {
@@ -115,7 +107,7 @@ try {
         reply(['ok' => true]);
     }
 
-    // ---------- DELETE a note ----------
+    // delete
     if ($action === 'delete') {
         $noteId = note_number($input['id'] ?? '');
         if (!find_note($conn, $noteId, $userId)) {

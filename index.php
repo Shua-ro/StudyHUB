@@ -9,7 +9,7 @@ require __DIR__ . '/includes/settings.php';
 
 $currentUser = require_login();   // not logged in -> login.html
 
-// Always re-check the session; never let Back show a cached dashboard after logout.
+// no caching, Back shouldn't show the dashboard after logout
 header('Cache-Control: no-store, no-cache, must-revalidate');
 
 $tasks = get_tasks_for_user($conn, (int) $currentUser['id']);
@@ -20,9 +20,7 @@ $preferences = get_preferences_for_user($conn, (int) $currentUser['id']);
 $pomodoroPreferences = get_pomodoro_preferences_for_user($conn, (int) $currentUser['id']);
 $announcements = get_active_announcements($conn, $currentUser['role']);
 
-// "css/style.css" -> "css/style.css?v=1732612345" (the file's last change time).
-// The browser re-downloads a CSS/JS file as soon as it changes, instead of
-// running a stale cached copy against new page markup.
+// cache busting: adds ?v=<file mtime> so the browser grabs new css/js as soon as it changes
 function asset(string $path): string
 {
     $file = __DIR__ . '/' . $path;
@@ -44,7 +42,7 @@ function asset(string $path): string
     />
     <link rel="stylesheet" href="<?= asset('css/style.css') ?>" />
     <script>
-      /* Apply the saved theme before first paint to avoid a flash. */
+      /* set the theme before paint so it doesn't flash */
       (function () {
         var theme = "dark";
         try {
@@ -64,7 +62,7 @@ function asset(string $path): string
     </script>
   </head>
   <body>
-    <!-- Shared SVG icon sprite (Lucide-style, 24px grid, 1.75 stroke) -->
+    <!-- icons -->
     <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
       <defs>
         <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
@@ -163,7 +161,7 @@ function asset(string $path): string
         </div>
       </details>
 
-      <!-- Dev-only role switch (shows when ?dev=1 in URL) -->
+      <!-- dev role switch (?dev=1) -->
       <div id="dev-role-switch" class="dev-only" style="display:none">
         <label for="dev-role">Simulate role:</label>
         <select id="dev-role">
@@ -216,7 +214,7 @@ function asset(string $path): string
 
         <div class="announcements" aria-label="Announcements"></div>
 
-        <!-- Filled by loadAdminOverview() in app.js from api/admin.php -->
+        <!-- loadAdminOverview() fills this -->
         <div class="admin-stats" id="admin-overview" aria-live="polite">
           <article class="stat-card" data-stat="total">
             <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-users" /></svg></span>
@@ -252,7 +250,7 @@ function asset(string $path): string
         </div>
         <p id="admin-overview-error" class="section-note" role="alert" hidden></p>
 
-        <!-- Filled by loadAdminReports() in app.js from api/admin.php "reports" -->
+        <!-- loadAdminReports() fills this -->
         <section class="card report-chart-card" aria-labelledby="signins-title">
           <div class="report-chart-head">
             <h3 id="signins-title" class="card-title">Sign-ins, last 14 days</h3>
@@ -363,7 +361,7 @@ function asset(string $path): string
         <p id="users-empty" class="users-empty" hidden>No accounts match these filters.</p>
         <div id="users-pagination" class="users-pagination" aria-label="Pages"></div>
 
-        <!-- Manage one account. Filled by openUserDialog() in app.js. -->
+        <!-- manage account dialog (openUserDialog) -->
         <dialog id="user-dialog" class="admin-dialog" aria-labelledby="user-dialog-title">
           <div class="dialog-body">
             <div class="dialog-header">
@@ -378,7 +376,7 @@ function asset(string $path): string
           </div>
         </dialog>
 
-        <!-- Moderation: one user's tasks, classes and notes. Filled by openContentDialog(). -->
+        <!-- moderation: one user's tasks/classes/notes (openContentDialog) -->
         <dialog id="content-dialog" class="admin-dialog admin-dialog-wide" aria-labelledby="content-dialog-title">
           <div class="dialog-body">
             <div class="dialog-header">
@@ -402,7 +400,7 @@ function asset(string $path): string
           </div>
         </dialog>
 
-        <!-- Super Admin: create an account with a temporary password. -->
+        <!-- super admin: create account w/ temp password -->
         <dialog id="user-create-dialog" class="admin-dialog" aria-labelledby="user-create-title">
           <div class="dialog-body">
             <div class="dialog-header">
@@ -792,8 +790,7 @@ function asset(string $path): string
           <div id="teacher-analytics-bars" class="distribution-bars"></div>
         </div>
       </section>
-      <!-- Teacher Classroom. Two views, driven by js/teacher_classroom.js:
-           1. the class list (search + cards), 2. one class (Stream / Classwork / People). -->
+      <!-- teacher classroom (teacher_classroom.js): class list, or one class w/ tabs -->
       <section id="teacher-classroom" data-view="teacher" aria-labelledby="tc-title" hidden>
         <div id="tc-list-view">
           <div class="classroom-heading">
@@ -841,7 +838,7 @@ function asset(string $path): string
           <div id="tc-panel-people" class="tc-panel" role="tabpanel" aria-labelledby="tc-tab-people" tabindex="0" hidden></div>
         </div>
 
-        <!-- Create / edit class, and delete confirmations. -->
+        <!-- create/edit class + delete confirms -->
         <dialog id="tc-dialog" class="admin-dialog tc-dialog" aria-labelledby="tc-dialog-title">
           <form id="tc-dialog-form" class="dialog-body" method="dialog" novalidate>
             <div class="dialog-header">
@@ -915,14 +912,14 @@ function asset(string $path): string
 
         <div class="announcements dashboard-wide" aria-label="Announcements"></div>
 
-        <!-- Next up: the three most urgent unfinished tasks, rendered by renderNextUp() -->
+        <!-- next up (renderNextUp) -->
         <section id="next-up" class="card dashboard-wide" aria-labelledby="next-up-title">
           <h3 id="next-up-title" class="card-title">Next up</h3>
           <ol id="next-up-list" class="next-up-list"></ol>
           <a href="#tasks" class="text-link" data-go="tasks">See all tasks</a>
         </section>
 
-        <!-- Unit 3 summary values are rendered from JavaScript state. -->
+        <!-- unit 3 summary, filled from JS -->
         <section id="dash-priority" class="dashboard-metric stat-card">
           <span class="stat-icon" aria-hidden="true"><svg class="icon"><use href="#i-list" /></svg></span>
           <h3>Total tasks</h3>
@@ -953,7 +950,7 @@ function asset(string $path): string
           <strong id="summary-study-time">0.0 hours</strong>
         </section>
 
-        <!-- UNIT 9: Live derived metrics, rendered by renderMetrics() in app.js -->
+        <!-- unit 9: live metrics (renderMetrics) -->
         <section
           id="system-metrics"
           class="card dashboard-wide"
@@ -1025,7 +1022,7 @@ function asset(string $path): string
           </button>
         </section>
 
-        <!-- The leader's task form is retained as the ONE authoritative task form. -->
+        <!-- the task form. only one, don't add another -->
         <form
           id="task-form"
           class="dashboard-wide"
@@ -1050,7 +1047,7 @@ function asset(string $path): string
             hidden
           ></div>
 
-          <!-- Core required fields -->
+          <!-- required -->
           <fieldset class="form-section">
             <legend>Core details</legend>
 
@@ -1137,7 +1134,7 @@ function asset(string $path): string
             </div>
           </fieldset>
 
-          <!-- Optional / extra fields -->
+          <!-- optional -->
           <fieldset class="form-section">
             <legend>Optional details</legend>
 
@@ -1163,7 +1160,7 @@ function asset(string $path): string
               <span id="task-tags-error" class="inline-error" aria-live="polite"></span>
             </div>
 
-            <!-- Reminder section - grouped together -->
+            <!-- reminder -->
             <div class="reminder-group" id="reminder-group">
               <label class="reminder-toggle">
                 <input type="checkbox" id="task-has-reminder" name="hasReminder" value="1" />
@@ -1801,9 +1798,7 @@ function asset(string $path): string
           </fieldset>
         </section>
 
-        <!-- ========================================== -->
-        <!-- UNIT 8: Data Management                  -->
-        <!-- ========================================== -->
+        <!-- unit 8: data management -->
         <section
           id="system-data"
           class="content-card"
@@ -1898,11 +1893,11 @@ function asset(string $path): string
 
     </main>
 
-    <!-- Toast notification container -->
+    <!-- toasts -->
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
     <script>
-      /* Logged-in user. PHP writes this on the server. */
+      /* stuff from the db for app.js */
       window.STUDYHUB_USER = <?= json_encode([
           'id'   => $currentUser['id'],
           'name' => $currentUser['name'],
@@ -1912,29 +1907,23 @@ function asset(string $path): string
       ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script>
-      /* Tasks from the database. PHP writes them here. */
       window.STUDYHUB_TASKS = <?= json_encode($tasks, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script>
-      /* Schedules from the database. PHP writes them here. */
       window.STUDYHUB_SCHEDULES = <?= json_encode($schedules, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script>
-      /* Notes from the database. PHP writes them here. */
       window.STUDYHUB_NOTES = <?= json_encode($notes, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script>
-      /* Audit log from the database. PHP writes them here. */
       window.STUDYHUB_AUDIT = <?= json_encode($auditLog, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script>
-      /* User preferences from the database. PHP writes them here. */
       window.STUDYHUB_PREFERENCES = <?= json_encode($preferences, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script>
-      /* Pomodoro preferences from the database. PHP writes them here. */
       window.STUDYHUB_POMODORO = <?= json_encode($pomodoroPreferences, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-      /* Live announcements for this user's role (Admin > Settings). */
+      /* live announcements for this role */
       window.STUDYHUB_ANNOUNCEMENTS = <?= json_encode($announcements, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <script src="<?= asset('js/auth.js') ?>" defer></script>

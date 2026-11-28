@@ -1,16 +1,11 @@
 <?php
-// api/schedules.php
-// The page sends schedule changes here. This file saves them in the database.
-// It receives JSON and answers with JSON.
-//
-// Actions:  create  |  update  |  delete
+// schedule create/update/delete. JSON in, JSON out
 
 require __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';   // (auth.php already loads it)
+require_once __DIR__ . '/../includes/db.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Send an answer and stop.
 function reply($data, $code = 200)
 {
     http_response_code($code);
@@ -24,7 +19,7 @@ function schedule_number($id)
     return (int) str_replace('SCH-', '', (string) $id);
 }
 
-// Get one schedule, but only if it belongs to this user. Returns null if not found.
+// only returns it if it's theirs, otherwise null
 function find_schedule($conn, $scheduleId, $userId)
 {
     $stmt = mysqli_prepare($conn, 'SELECT id FROM schedules WHERE id = ? AND user_id = ?');
@@ -34,21 +29,19 @@ function find_schedule($conn, $scheduleId, $userId)
     return mysqli_fetch_assoc($result);
 }
 
-// Validate time format HH:MM
+// HH:MM
 function clean_time($value)
 {
     $value = (string) $value;
     return preg_match('/^\d{2}:\d{2}$/', $value) ? $value : null;
 }
 
-// Validate day
 function clean_day($value)
 {
     $valid = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     return in_array($value, $valid, true) ? $value : null;
 }
 
-// Write an audit log entry.
 function write_audit($conn, $userId, $action, $entityType, $entityId, $details = '')
 {
     $stmt = mysqli_prepare($conn,
@@ -57,13 +50,11 @@ function write_audit($conn, $userId, $action, $entityType, $entityId, $details =
     mysqli_stmt_execute($stmt);
 }
 
-// ---------- Check the request ----------
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(['ok' => false, 'message' => 'Use POST.'], 405);
 }
 
-$user = api_user();   // 401 if signed out, 403 if a password change is required
+$user = api_user();
 $userId = (int) $user['id'];
 
 $input = json_decode(file_get_contents('php://input'), true);
@@ -75,7 +66,7 @@ $action = $input['action'] ?? '';
 
 try {
 
-    // ---------- CREATE a schedule ----------
+    // create
     if ($action === 'create') {
         $s = $input['schedule'] ?? [];
 
@@ -106,7 +97,7 @@ try {
         reply(['ok' => true, 'id' => $newId]);
     }
 
-    // ---------- UPDATE a schedule ----------
+    // update
     if ($action === 'update') {
         $scheduleId = schedule_number($input['id'] ?? '');
         if (!find_schedule($conn, $scheduleId, $userId)) {
@@ -141,7 +132,7 @@ try {
         reply(['ok' => true]);
     }
 
-    // ---------- DELETE a schedule ----------
+    // delete
     if ($action === 'delete') {
         $scheduleId = schedule_number($input['id'] ?? '');
         if (!find_schedule($conn, $scheduleId, $userId)) {

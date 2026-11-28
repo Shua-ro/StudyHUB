@@ -1,10 +1,8 @@
 <?php
-// api/pomodoro.php
-// Save/load user Pomodoro preferences to/from the database.
-// Actions: get, update
+// load/save pomodoro settings (get, update)
 
 require __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';   // (auth.php already loads it)
+require_once __DIR__ . '/../includes/db.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -19,12 +17,11 @@ if (!in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET'], true)) {
     reply(['ok' => false, 'message' => 'Use POST or GET.'], 405);
 }
 
-$user = api_user();   // 401 if signed out, 403 if a password change is required
+$user = api_user();
 $userId = (int) $user['id'];
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'GET' || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($input['action'] ?? '') === 'get')) {
-        // GET preferences
         $sql = 'SELECT focus_duration, short_duration, long_duration
                 FROM user_pomodoro_preferences
                 WHERE user_id = ?';
@@ -44,7 +41,7 @@ try {
                 ]
             ]);
         } else {
-            // Defaults
+            // defaults
             reply([
                 'ok' => true,
                 'preferences' => [
@@ -67,7 +64,7 @@ try {
         if ($action === 'update') {
             $prefs = $input['preferences'] ?? [];
 
-            // Validate durations (1-180 minutes = 60-10800 seconds)
+            // 1-180 min (stored in seconds)
             $focusDuration  = isset($prefs['focusDuration'])  ? max(60, min(10800, (int) $prefs['focusDuration']))  : 1500;
             $shortDuration  = isset($prefs['shortDuration'])  ? max(60, min(10800, (int) $prefs['shortDuration']))  : 300;
             $longDuration   = isset($prefs['longDuration'])   ? max(60, min(10800, (int) $prefs['longDuration']))   : 900;

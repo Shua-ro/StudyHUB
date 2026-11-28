@@ -1,6 +1,4 @@
-/* StudyHub auth shim.
-   PHP now handles login, signup, logout, and the session.
-   index.php writes window.STUDYHUB_USER. This file only passes that data to app.js. */
+// passes window.STUDYHUB_USER (from index.php) to app.js. PHP handles the actual session
 (() => {
   const ROLES = {
     super_admin: { label: "Super Admin", view: "admin" },
@@ -9,7 +7,6 @@
     teacher: { label: "Teacher", view: "teacher" },
   };
 
-  /* Return the user that PHP gave us, or null. */
   function getSessionUser() {
     const u = window.STUDYHUB_USER;
     if (!u) return null;
@@ -21,10 +18,10 @@
     };
   }
 
-  /* The server owns the session now. logout.php clears it. */
+  // logout.php handles it
   function clearSession() {}
 
-  /* Show/Hide password buttons (used by login.html and signup.html). */
+  // show/hide password buttons (login + signup)
   function setUpPasswordToggles() {
     document.querySelectorAll("[data-password-toggle]").forEach((button) => {
       button.addEventListener("click", () => {

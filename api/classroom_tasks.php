@@ -78,7 +78,7 @@ function write_audit($conn, $userId, $action, $entityType, $entityId, $details =
             [$userId, $action, $entityType, $entityId, $details]
         );
     } catch (Throwable $e) {
-        // Ignore audit log errors
+        // don't care if the audit log fails
     }
 }
 

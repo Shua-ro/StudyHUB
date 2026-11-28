@@ -1,10 +1,10 @@
-// Workflow states in order
+// workflow order
 const WORKFLOW_PATH = ["To do", "In progress", "In review", "Done", "Archived"];
 
-// Id of the archived task whose delete is waiting for confirmation (or null).
+// archived task waiting on a delete confirm (or null)
 let archiveDeleteId = null;
 
-// Progress excludes Archived (it's 100% by definition)
+// archived doesn't count for progress, it's always 100%
 const PROGRESS_PATH = WORKFLOW_PATH.filter((status) => status !== "Archived");
 function getDaysRemaining(task) {
   if (!task.dueDate) return Infinity;
@@ -33,12 +33,11 @@ function getStatusClass(status) {
 function getStudyHours(task) {
   return (task.estimatedMinutes || 0) / 60;
 }
-// Check if a task is in a finished state
 function isFinished(task) {
   return task.status === "Done" || task.status === "Archived";
 }
 
-// Allowed transitions per status
+// allowed status moves
 const TRANSITION_MATRIX = {
   "To do": {
     "In progress": {
@@ -90,7 +89,7 @@ const TRANSITION_MATRIX = {
       emphasis: false,
     },
   },
-  /* Terminal state: nothing can leave Archived. */
+  // archived is final
   Archived: {},
 };
 
@@ -102,7 +101,7 @@ const TRANSITION_CONDITIONS = {
       (task.dueDate || task.classroomAssignmentId),
     ),
 
-  // For archiving a Done task — only needs title/subject (dueDate optional)
+  // archiving a done task only needs title + subject
   isDone: (task) =>
     Boolean(
       String(task.title ?? "").trim() && String(task.subject ?? "").trim(),
@@ -112,9 +111,8 @@ const TRANSITION_CONDITIONS = {
 const AUTH = window.StudyHubAuth;
 const ROLES = AUTH.ROLES;
 
-/* If the server says this session is no longer valid (account suspended,
-   banned, or signed out everywhere), leave the page and explain why on the
-   login screen instead of letting saves fail silently. */
+// session's dead (suspended, banned, logged out everywhere)? go to login and say why,
+// instead of saves just failing quietly
 const LOGIN_NOTICES = ["suspended", "banned", "pending", "signed_out"];
 const nativeFetch = window.fetch.bind(window);
 window.fetch = async (...args) => {
@@ -125,12 +123,12 @@ window.fetch = async (...args) => {
     try {
       code = (await response.clone().json()).code ?? "";
     } catch {
-      /* not JSON: fall back to a plain redirect */
+      /* not JSON, just redirect */
     }
     const notice = LOGIN_NOTICES.includes(code) ? `?notice=${code}` : "";
     window.location.replace(`login.html${notice}`);
   }
-  // After an admin reset: everything is refused until a new password is chosen.
+  // after an admin reset nothing works until they pick a new password
   if (response.status === 403 && url.includes("api/")) {
     try {
       if ((await response.clone().json()).code === "must_change_password") {
@@ -143,7 +141,7 @@ window.fetch = async (...args) => {
   return response;
 };
 
-// Dev role override: if ?dev=1 and a saved dev role exists, use it instead of real auth
+// dev role override (?dev=1 + a saved role)
 let devRoleOverride = null;
 if (new URLSearchParams(location.search).has("dev")) {
   devRoleOverride = sessionStorage.getItem("devRoleOverride");
@@ -166,7 +164,6 @@ try {
 
 console.log("[dev-startup] currentUser before override:", currentUser?.role);
 
-// Apply dev role override if present
 if (devRoleOverride && currentUser) {
   currentUser = { ...currentUser, role: devRoleOverride };
   console.log("[dev-startup] currentUser after override:", currentUser.role);
@@ -222,29 +219,27 @@ const ROLE_PERMISSIONS = {
   super_admin: new Set(Object.values(CAPABILITIES)),
 };
 
-/* NOTE: these browser-side checks only decide what to SHOW. The server
-   (includes/permissions.php + includes/auth.php) is what actually enforces
-   who may do what; never rely on this list for security. */
+// heads up: this only decides what to SHOW. the real checks are server side
+// (permissions.php + auth.php), don't rely on this for security
 
-// Checks if current role has a capability
 function allowed(capability) {
   return ROLE_PERMISSIONS[session.role]?.has(capability) ?? false;
 }
 
-// Ownership-aware check for record-scoped capabilities
+// same thing but checks ownership too
 function allowedOn(capability, task) {
   if (!allowed(capability)) return false;
   if (capability === CAPABILITIES.TASK_EDIT_OWN) return canEditTask(task);
   if (capability === CAPABILITIES.TASK_STATUS) return canEditTask(task);
-  if (capability === CAPABILITIES.TASK_ARCHIVE) return task.status === "Done"; // allow archiving Done tasks
-  return true; // non-ownership capabilities
+  if (capability === CAPABILITIES.TASK_ARCHIVE) return task.status === "Done";
+  return true;
 }
 
 if (!currentUser) {
   window.location.replace("login.html");
 }
 
-// Strip out UI elements not allowed for current view, then show page
+// hide whatever this role can't use, then show the page
 function applyRoleView() {
   console.log(
     "[applyRoleView] currentView:",
@@ -313,9 +308,9 @@ function initialsOf(name) {
   );
 }
 
-/* Admin dashboard: usage report + sign-ins chart (api/admin.php "reports").
-   NOTE: called from applyRoleView() at startup, so nothing here may touch a
-   const declared further down this file before the first await. */
+// admin dashboard usage report + sign-ins chart.
+// careful: this runs from applyRoleView() at startup, so don't touch any const
+// declared further down this file before the first await
 async function loadAdminReports() {
   let data;
   try {
@@ -341,7 +336,7 @@ async function loadAdminReports() {
   setLabel("#report-classes", String(content.classes));
   setLabel("#report-notes", String(content.notes));
 
-  // Security figures only arrive for Super Admins (the server decides).
+  // only super admins get the security numbers
   const securityBlock = document.querySelector("#report-security");
   if (securityBlock) securityBlock.hidden = !security;
   if (security) {
@@ -353,10 +348,8 @@ async function loadAdminReports() {
   renderSignInChart(signIns);
 }
 
-/* Single-series bar chart, plain HTML/CSS (no library).
-   One hue, thin bars with 4px rounded tops on the baseline, recessive grid,
-   direct labels only on the busiest day and today, a hover/focus tooltip on
-   every day, and a table version for screen readers. */
+// simple bar chart, plain html/css, no library. labels on the busiest day + today,
+// tooltip on hover/focus, and a hidden table for screen readers
 function renderSignInChart(days) {
   const chart = document.querySelector("#signins-chart");
   if (!chart) return;
@@ -366,7 +359,7 @@ function renderSignInChart(days) {
   document.querySelector("#signins-empty").hidden = total > 0;
   chart.hidden = total === 0;
 
-  // A round top for the scale: 1, 2, 5, 10, 20, 50, ...
+  // round the scale up to 1, 2, 5, 10, 20, 50...
   const niceMax = (() => {
     if (max <= 4) return 4;
     const power = 10 ** Math.floor(Math.log10(max));
@@ -411,7 +404,6 @@ function renderSignInChart(days) {
     )
     .join("");
 
-  // Tooltip follows the hovered/focused day.
   const tooltip = chart.querySelector(".chart-tooltip");
   const show = (col) => {
     tooltip.textContent = col.dataset.tip;
@@ -435,7 +427,7 @@ function renderSignInChart(days) {
   chart.addEventListener("mouseleave", hide);
 }
 
-/* Admin dashboard: account counts from api/admin.php (the server checks the role). */
+// admin dashboard account counts
 async function loadAdminOverview() {
   const error = document.querySelector("#admin-overview-error");
   try {
@@ -461,7 +453,7 @@ async function loadAdminOverview() {
       "#admin-stat-blocked",
       String((byStatus.suspended ?? 0) + (byStatus.banned ?? 0)),
     );
-    // Only draw attention to approvals when someone is actually waiting.
+    // only highlight approvals if someone's waiting
     document
       .querySelector('[data-stat="pending"]')
       ?.classList.toggle("has-items", (byStatus.pending ?? 0) > 0);
@@ -497,8 +489,7 @@ if (logoutButton) {
 applyRoleView();
 
 const state = {
-  // Tasks, classes and notes are loaded from the database (index.php writes
-  // window.STUDYHUB_TASKS / _SCHEDULES / _NOTES); there is no built-in sample data.
+  // tasks/classes/notes come from the db via index.php, no sample data here
   records: [],
 
   query: "",
@@ -531,18 +522,16 @@ const state = {
   },
 };
 
-// Version of the JSON backup format (Export / Import). Bump it when the format
-// changes; api/data.php refuses versions it does not know.
+// backup format version. bump it when the format changes (data.php rejects versions it doesn't know)
 const SCHEMA_VERSION = 1;
 let pendingImport = null;
 
-// Older builds kept a full copy of the user's tasks, schedules and notes in
-// localStorage. The database is the only copy now, so drop the leftover one
-// (it would otherwise stay readable on shared computers after logout).
+// old builds kept a copy of everything in localStorage. the db is the only copy now so
+// clear the leftover, otherwise it'd stick around on shared computers after logout
 try {
   localStorage.removeItem("studyhub-state-v1");
 } catch {
-  /* storage blocked: nothing to clean up */
+  /* storage blocked, nothing to clean */
 }
 
 function showStorageStatus(message, isError = false) {
@@ -665,7 +654,7 @@ function isValidPayload(payload) {
   return true;
 }
 
-/* The JSON backup file (Export). Import validates it with isValidPayload(). */
+// export file. import checks it with isValidPayload()
 function createBackupPayload() {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -681,12 +670,11 @@ function createBackupPayload() {
       pageSize: state.pageSize,
     },
     activeRole: session.role,
-    // auditLog is now server-side (see window.STUDYHUB_AUDIT)
+    // audit log lives on the server now
   };
 }
 
-/* Tasks from the database. PHP writes window.STUDYHUB_TASKS in index.php.
-   The database is the source of truth. */
+// all of these come from the db (index.php sets them)
 if (Array.isArray(window.STUDYHUB_TASKS)) {
   state.records = window.STUDYHUB_TASKS.filter((t) => t.status !== "Archived");
   state.archivedRecords = window.STUDYHUB_TASKS.filter(
@@ -694,23 +682,19 @@ if (Array.isArray(window.STUDYHUB_TASKS)) {
   );
 }
 
-/* Schedules from the database. PHP writes window.STUDYHUB_SCHEDULES in index.php. */
 if (Array.isArray(window.STUDYHUB_SCHEDULES)) {
   state.schedules = window.STUDYHUB_SCHEDULES;
 }
 
-/* Notes from the database. PHP writes window.STUDYHUB_NOTES in index.php. */
 if (Array.isArray(window.STUDYHUB_NOTES)) {
   state.notes = window.STUDYHUB_NOTES;
 }
 
-/* Audit log from the database. PHP writes window.STUDYHUB_AUDIT in index.php. */
 if (Array.isArray(window.STUDYHUB_AUDIT)) {
   state.auditLog = window.STUDYHUB_AUDIT;
 }
 
-/* User preferences from the database. PHP writes window.STUDYHUB_PREFERENCES in index.php:
-   theme, filters, sort, page size. */
+// prefs: theme, filters, sort, page size
 if (
   window.STUDYHUB_PREFERENCES &&
   typeof window.STUDYHUB_PREFERENCES === "object"
@@ -744,14 +728,14 @@ function showMessage(message) {
   messageRegion.textContent = message;
   messageRegion.hidden = false;
 
-  // The message floats over the page, so clear it after a short read.
+  // it floats over the page so clear it after a bit
   clearTimeout(showMessage.timer);
   showMessage.timer = setTimeout(() => {
     messageRegion.hidden = true;
   }, 4500);
 }
 
-// Toast notification - shows a temporary message that auto-dismisses
+// toast
 function showToast(message, duration = 2000) {
   const container = document.querySelector("#toast-container");
   if (!container) return;
@@ -764,12 +748,10 @@ function showToast(message, duration = 2000) {
 
   container.appendChild(toast);
 
-  // Trigger animation
   requestAnimationFrame(() => {
     toast.classList.add("toast-show");
   });
 
-  // Auto-dismiss
   setTimeout(() => {
     toast.classList.remove("toast-show");
     toast.classList.add("toast-hide");
@@ -779,9 +761,8 @@ function showToast(message, duration = 2000) {
   }, duration);
 }
 
-/* Search helpers: every word typed must match somewhere in the task
-   (title, subject, description, id, tags, priority, status or due date).
-   Case, accents and extra spaces are ignored. */
+// search: every word has to match somewhere (title, subject, desc, id, tags, priority, status, due).
+// ignores case, accents and extra spaces
 function searchText(value) {
   return String(value ?? "")
     .normalize("NFD")
@@ -796,7 +777,7 @@ function searchTokens(query) {
   return searchText(query).split(" ").filter(Boolean);
 }
 
-/* Returns a relevance score, or -1 when the task does not match. */
+// relevance score, -1 = no match
 function taskSearchScore(task, tokens) {
   if (!tokens.length) return 0;
 
@@ -825,9 +806,8 @@ function taskSearchScore(task, tokens) {
   return score;
 }
 
-/* Database search (GET api/tasks.php?q=...).
-   The last answer is kept here. While the database is still answering a
-   new query, the in-browser match above is used so typing stays instant. */
+// db search results (api/tasks.php?q=). while the db is still answering,
+// the local match gets used so typing doesn't lag
 const dbTaskSearch = {
   query: null,       // the query this answer belongs to
   order: new Map(),  // task id -> rank (0 = best match)
@@ -847,8 +827,7 @@ function forgetDbSearch() {
   dbTaskSearch.archived = 0;
 }
 
-/* Ask the database which tasks match. Calls onDone() when the answer arrives
-   (only if it is still the latest request). */
+// ask the db what matches, onDone() only fires if it's still the latest request
 async function fetchDbSearch(query, onDone) {
   const q = query.trim();
   if (!q) {
@@ -865,7 +844,7 @@ async function fetchDbSearch(query, onDone) {
       credentials: "same-origin",
     });
     const data = await response.json();
-    if (seq !== dbTaskSearch.seq) return;   // a newer search was started
+    if (seq !== dbTaskSearch.seq) return;   // stale, newer search going
     if (!data.ok) throw new Error(data.message || "Search failed.");
     dbTaskSearch.query = q;
     dbTaskSearch.order = new Map(data.ids.map((id, rank) => [id, rank]));
@@ -878,7 +857,7 @@ async function fetchDbSearch(query, onDone) {
   }
 }
 
-/* Debounced: wait until the person pauses typing. */
+// debounced
 function scheduleDbSearch(query, onDone) {
   clearTimeout(dbTaskSearch.timer);
   dbTaskSearch.timer = setTimeout(() => fetchDbSearch(query, onDone), 200);
@@ -1100,7 +1079,7 @@ function renderSummary(records) {
   );
 }
 
-/* Dashboard "Next up": the three most urgent unfinished tasks. */
+// dashboard next up: 3 most urgent unfinished tasks
 function getDueBadge(task) {
   if (!task.dueDate) return { text: "No due date", tone: "muted" };
   const days = getDaysRemaining(task);
@@ -1169,17 +1148,17 @@ function percentOf(part, whole) {
 
 function computeMetrics(records) {
   const total = records.length;
-  // Completion rate: finished tasks (Done or Archived) divided by all tasks.
+  // completion = done or archived / all
   const done = records.filter(isFinished).length;
-  // In-progress count: tasks whose current workflow status is "In progress".
+  // in progress count
   const inProgress = records.filter(
     (task) => task.status === "In progress",
   ).length;
-  // Pending means any task not yet Done or Archived.
+  // pending = not done/archived yet
   const pending = records.filter((task) => !isFinished(task));
-  // Overdue rate: overdue pending tasks divided by all pending tasks.
+  // overdue rate = overdue pending / pending
   const overdue = pending.filter(getIsOverdue).length;
-  // Average study time: sum of pending estimated minutes divided by pending count.
+  // avg study time = pending est. minutes / pending count
   const pendingMinutes = pending.reduce(
     (sum, task) => sum + task.estimatedMinutes,
     0,
@@ -1567,7 +1546,7 @@ document.querySelector("#admin-qa-run")?.addEventListener("click", () => {
   renderAdminQA(runQualityAssuranceSuite());
 });
 
-// Bar colours mapped by label (matches [data-tone] in style.css)
+// bar colours by label, matches [data-tone] in the css
 const BAR_TONES = {
   "To do": "neutral",
   "In progress": "info",
@@ -1625,8 +1604,7 @@ function renderArchives() {
   if (!body) return;
 
   const archivedAt = (task) => task.workflowHistory?.at(-1)?.timestamp ?? "";
-  /* Newest first. Reversing before the (stable) sort makes ties favor the
-     task that was archived later. */
+  // newest first. reverse before the sort (it's stable) so ties go to the one archived later
   const rows = [...state.archivedRecords]
     .reverse()
     .sort((a, b) => archivedAt(b).localeCompare(archivedAt(a)));
@@ -1641,7 +1619,7 @@ function renderArchives() {
       const history = task.workflowHistory ?? [];
       const when = archivedAt(task);
 
-      /* Second step of a delete: the row turns into a confirmation. */
+      // 2nd click: the row turns into a confirm
       if (archiveDeleteId === task.id) {
         return `
         <tr data-id="${escapeHTML(task.id)}" class="archive-confirm-row">
@@ -1691,7 +1669,7 @@ function renderArchives() {
     .join("");
 }
 
-/* ---------- Deleting archived tasks ---------- */
+// deleting archived tasks
 
 function setArchiveStatus(message, isError = false) {
   const status = document.querySelector("#archive-status");
@@ -1701,7 +1679,7 @@ function setArchiveStatus(message, isError = false) {
   status.classList.toggle("is-error", isError);
 }
 
-// Re-render the archive table, then move keyboard focus somewhere sensible.
+// re-render the archive table + put focus somewhere that makes sense
 function rerenderArchives(focusSelector) {
   renderArchives();
   const body = document.querySelector("#archive-table-body");
@@ -1729,8 +1707,7 @@ async function deleteArchivedTask(id) {
     confirmButton.textContent = "Deleting…";
   }
 
-  /* Permanent, so the server goes first: the task only disappears here
-     once the database has really removed it. */
+  // it's permanent so wait for the server, only remove it here once the db actually did
   let message = "";
   try {
     const response = await fetch("api/tasks.php", {
@@ -1793,8 +1770,7 @@ function renderEmptyState(records) {
 
   const isEmpty = records.length === 0;
 
-  /* Keep the list header (and its Archives button) visible; only hide the
-     table and pagination when there is nothing to show. */
+  // keep the header + Archives button, only hide the table/pagination when it's empty
   taskList.querySelector(".table-wrapper").hidden = isEmpty;
   taskList.querySelector("#task-pagination").hidden = isEmpty;
   taskList.querySelector("#task-result-count").hidden = isEmpty;
@@ -1993,7 +1969,7 @@ function render() {
   renderNotes();
 }
 
-// Returns active + archived tasks (archived live separately but count in totals)
+// active + archived (archived are stored separately but still count)
 function getAllTasks() {
   return [...state.records, ...state.archivedRecords];
 }
@@ -2007,8 +1983,7 @@ function generateTaskId() {
   return `TASK-${String(nextNumber).padStart(3, "0")}`;
 }
 
-/* Send a change to the database (api/tasks.php).
-   Returns the answer from PHP, or null if the save failed. */
+// save a task change (api/tasks.php). returns the response, or null if it failed
 async function saveToServer(payload) {
   try {
     const response = await fetch("api/tasks.php", {
@@ -2027,17 +2002,16 @@ async function saveToServer(payload) {
   }
 }
 
-/* A task changed in the database, so the last search answer may be out of date. */
+// task changed, last search result might be stale
 function refreshDbSearchAfterChange() {
   forgetDbSearch();
-  dbTaskSearch.seq++;   // ignore any answer already on its way
+  dbTaskSearch.seq++;   // drop any response still in flight
   dbTaskSearch.pending = null;
   const q = state.query.trim() || searchInput?.value.trim() || "";
   if (q) fetchDbSearch(q, () => render());
 }
 
-/* Send a schedule change to the database (api/schedules.php).
-   Returns the answer from PHP, or null if the save failed. */
+// same for schedules
 async function saveScheduleToServer(payload) {
   try {
     const response = await fetch("api/schedules.php", {
@@ -2055,8 +2029,7 @@ async function saveScheduleToServer(payload) {
   }
 }
 
-/* Send a note change to the database (api/notes.php).
-   Returns the answer from PHP, or null if the save failed. */
+// same for notes
 async function saveNoteToServer(payload) {
   try {
     const response = await fetch("api/notes.php", {
@@ -2074,8 +2047,7 @@ async function saveNoteToServer(payload) {
   }
 }
 
-/* Send a preferences change to the database (api/preferences.php).
-   Returns the answer from PHP, or null if the save failed. */
+// same for preferences
 async function savePreferencesToServer(payload) {
   try {
     const response = await fetch("api/preferences.php", {
@@ -2104,7 +2076,7 @@ function addTask(task) {
   state.page = 1;
   render();
 
-  /* Save in the database. PHP gives the task its real ID. */
+  // save it, PHP gives it the real id
   saveToServer({ action: "create", task }).then((data) => {
     if (data && data.id && data.id !== task.id) {
       state.records = state.records.map((record) =>
@@ -2172,8 +2144,7 @@ function transitionTask(id, nextStatus) {
   const archiving = result.record.status === "Archived";
 
   if (archiving) {
-    /* Archived is the end of the workflow: the task leaves the working list
-       and is kept, history included, in the Archives table. */
+    // archived = end of the workflow, it leaves the list and goes to Archives (history and all)
     state.records = state.records.filter((record) => record.id !== id);
     state.archivedRecords = [...state.archivedRecords, result.record];
 
@@ -2263,7 +2234,7 @@ function generateScheduleId() {
   return `SCH-${String(next).padStart(3, "0")}`;
 }
 
-// Returns error string or "" if valid
+// error string, or "" if it's fine
 function validateSchedule(entry, ignoreId = null) {
   if (!SCHEDULE_DAYS.includes(entry.day)) return "Choose a valid day.";
   if (!entry.startTime || !entry.endTime)
@@ -2304,7 +2275,7 @@ function addSchedule(entry) {
   render();
   renderScheduleForm();
 
-  /* Save in the database. PHP gives the schedule its real ID. */
+  // save it, PHP gives it the real id
   saveScheduleToServer({ action: "create", schedule: record }).then((data) => {
     if (data && data.id && data.id !== record.id) {
       state.schedules = state.schedules.map((s) =>
@@ -2335,7 +2306,6 @@ function updateSchedule(id, updates) {
   render();
   renderScheduleForm();
 
-  /* Save in the database. */
   saveScheduleToServer({ action: "update", id, updates });
 
   return "";
@@ -2358,7 +2328,6 @@ function deleteSchedule(id) {
   render();
   if (wasEditing) renderScheduleForm();
 
-  /* Save in the database. */
   saveScheduleToServer({ action: "delete", id });
 
   return true;
@@ -2413,7 +2382,7 @@ function renderSchedules() {
       .filter((item) => item.day === day)
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-    /* Sunday only appears when it has classes, like the original table. */
+    // only show sunday if there's classes that day
     if (!items.length && day === "Sunday") return;
 
     if (!items.length) {
@@ -2548,7 +2517,7 @@ function addNote(entry) {
   render();
   renderNoteForm();
 
-  /* Save in the database. PHP gives the note its real ID. */
+  // save it, PHP gives it the real id
   saveNoteToServer({ action: "create", note: record }).then((data) => {
     if (data && data.id && data.id !== record.id) {
       state.notes = state.notes.map((n) =>
@@ -2578,7 +2547,6 @@ function updateNote(id, updates) {
   render();
   renderNoteForm();
 
-  /* Save in the database. */
   saveNoteToServer({ action: "update", id, updates });
 
   return "";
@@ -2599,13 +2567,12 @@ function deleteNote(id) {
   render();
   if (wasEditing) renderNoteForm();
 
-  /* Save in the database. */
   saveNoteToServer({ action: "delete", id });
 
   return true;
 }
 
-// Loads form from state when edit target changes (not from render, preserves draft)
+// fill the form when the edit target changes (not on render, so drafts don't get wiped)
 function renderNoteForm() {
   const form = document.querySelector("#note-form");
   if (!form) return;
@@ -2743,12 +2710,12 @@ if (taskList) {
           showMessage(`Task "${id}" was not found.`);
           return;
         }
-        // Permission + ownership guard
+        // permission check
         if (!allowedOn(CAPABILITIES.TASK_EDIT_OWN, task)) {
           showMessage("You don't have permission to edit this task.");
           return;
         }
-        // Workflow state guard
+        // status check
         if (!canEditTask(task)) {
           showMessage("Completed tasks can't be edited.");
           return;
@@ -2834,12 +2801,12 @@ if (taskDetails) {
     );
     if (!task) return;
 
-    // Permission + ownership guard
+    // permission check
     if (!allowedOn(CAPABILITIES.TASK_EDIT_OWN, task)) {
       showMessage("You don't have permission to edit this task.");
       return;
     }
-    // Workflow state guard
+    // status check
     if (!canEditTask(task)) {
       showMessage("Completed tasks can't be edited.");
       return;
@@ -2851,11 +2818,9 @@ if (taskDetails) {
   });
 }
 
-/* ============================================================
-   Unit 4: Advanced Form Validation Engine for Task Form
-   ============================================================ */
+// unit 4 - task form validation
 
-// Set min date for date inputs to today
+// no past dates
 function setMinDateToday() {
   const today = new Date().toISOString().split("T")[0];
   const dueInput = document.querySelector("#task-due");
@@ -2864,7 +2829,7 @@ function setMinDateToday() {
   if (reminderInput) reminderInput.min = today;
 }
 
-// Show/hide reminder date field based on checkbox
+// reminder date only shows when the checkbox is on
 function initReminderToggle() {
   const checkbox = document.querySelector("#task-has-reminder");
   const reminderField = document.querySelector("#reminder-date-field");
@@ -2883,7 +2848,6 @@ function initReminderToggle() {
   }
 }
 
-// Clear inline error for a field
 function clearInlineError(fieldId) {
   const errorEl = document.querySelector(`#${fieldId}-error`);
   if (errorEl) errorEl.textContent = "";
@@ -2891,7 +2855,6 @@ function clearInlineError(fieldId) {
   if (field) field.removeAttribute("aria-invalid");
 }
 
-// Clear all inline errors
 function clearAllInlineErrors() {
   document.querySelectorAll(".inline-error").forEach((el) => {
     el.textContent = "";
@@ -2900,7 +2863,6 @@ function clearAllInlineErrors() {
   });
 }
 
-// Set inline error for a field
 function setInlineError(fieldId, message) {
   const errorEl = document.querySelector(`#${fieldId}-error`);
   if (errorEl) errorEl.textContent = message;
@@ -2908,7 +2870,7 @@ function setInlineError(fieldId, message) {
   if (field) field.setAttribute("aria-invalid", "true");
 }
 
-// Show error summary with links to fields
+// error summary w/ links to the fields
 function showErrorSummary(errors) {
   const summary = document.querySelector("#task-error-summary");
   if (!summary) return;
@@ -2942,7 +2904,6 @@ function showErrorSummary(errors) {
   summary.focus();
 }
 
-// Hide error summary
 function hideErrorSummary() {
   const summary = document.querySelector("#task-error-summary");
   if (summary) {
@@ -2951,13 +2912,11 @@ function hideErrorSummary() {
   }
 }
 
-// Validation rules
 function validateTaskForm(formData) {
   const errors = [];
   const now = new Date();
   const today = now.toISOString().split("T")[0];
 
-  // Get all values
   const title = String(formData.get("title") ?? "").trim();
   const subject = String(formData.get("subject") ?? "").trim();
   const dueDate = String(formData.get("dueDate") ?? "");
@@ -2968,12 +2927,11 @@ function validateTaskForm(formData) {
   const reminderDate = String(formData.get("reminderDate") ?? "");
   const notes = String(formData.get("notes") ?? "").trim();
 
-  // --- Native HTML5 validation is handled by browser ---
-  // We add custom JS rules below
+  // browser handles the basic html5 stuff, custom rules below
 
-  // --- JS Field Rules (4+) ---
+  // field rules (need 4+)
 
-  // 1. Title: required, no special characters only, reasonable length
+  // 1. title: required, not just symbols, sane length
   if (!title) {
     errors.push({ field: "task-title", message: "Title is required." });
     setInlineError("task-title", "Required.");
@@ -2993,7 +2951,7 @@ function validateTaskForm(formData) {
     clearInlineError("task-title");
   }
 
-  // 2. Subject: required, alphanumeric + spaces, reasonable length
+  // 2. subject: required, letters/numbers/spaces
   if (!subject) {
     errors.push({ field: "task-subject", message: "Subject is required." });
     setInlineError("task-subject", "Required.");
@@ -3013,7 +2971,7 @@ function validateTaskForm(formData) {
     clearInlineError("task-subject");
   }
 
-  // 3. Due date: required, must not be in the past
+  // 3. due date: required, not in the past
   if (!dueDate) {
     errors.push({ field: "task-due", message: "Due date is required." });
     setInlineError("task-due", "Required.");
@@ -3027,7 +2985,7 @@ function validateTaskForm(formData) {
     clearInlineError("task-due");
   }
 
-  // 4. Priority: required
+  // 4. priority: required
   if (!priority) {
     errors.push({ field: "task-priority", message: "Priority is required." });
     setInlineError("task-priority", "Required.");
@@ -3035,7 +2993,7 @@ function validateTaskForm(formData) {
     clearInlineError("task-priority");
   }
 
-  // 5. Estimated hours: required, must be valid number within range
+  // 5. hours: required, valid number in range
   if (!estimatedHours) {
     errors.push({
       field: "task-estimated",
@@ -3055,7 +3013,7 @@ function validateTaskForm(formData) {
     }
   }
 
-  // 4. Tags: validate format (comma-separated, no special chars except hyphen)
+  // 6. tags: comma separated, hyphen is the only special char allowed
   if (tags && !/^[\w\s,-]+$/.test(tags)) {
     errors.push({
       field: "task-tags",
@@ -3067,9 +3025,9 @@ function validateTaskForm(formData) {
     clearInlineError("task-tags");
   }
 
-  // --- Cross-field Rules (2+) ---
+  // cross-field rules (need 2+)
 
-  // 5. Reminder date (if set) must not be in the past
+  // 7. reminder date can't be in the past
   if (hasReminder && reminderDate && reminderDate < today) {
     errors.push({
       field: "task-reminder-date",
@@ -3081,7 +3039,7 @@ function validateTaskForm(formData) {
     );
   }
 
-  // 6. Reminder date (if set) must be before or equal to due date
+  // 8. reminder has to be on or before the due date
   if (hasReminder && reminderDate && dueDate && reminderDate > dueDate) {
     errors.push({
       field: "task-reminder-date",
@@ -3089,15 +3047,15 @@ function validateTaskForm(formData) {
     });
     setInlineError("task-reminder-date", "Reminder cannot be after due date.");
   } else {
-    // Only clear if no other reminder-date error was set above
+    // don't clear it if the other reminder check already set an error
     if (!(hasReminder && reminderDate && reminderDate < today)) {
       clearInlineError("task-reminder-date");
     }
   }
 
-  // --- Conditional Required Field ---
+  // conditional required
 
-  // 7. Reminder date is required when reminder checkbox is checked
+  // 9. reminder date required if the checkbox is on
   if (hasReminder && !reminderDate) {
     errors.push({
       field: "task-reminder-date",
@@ -3106,9 +3064,9 @@ function validateTaskForm(formData) {
     setInlineError("task-reminder-date", "Please select a reminder date.");
   }
 
-  // --- Duplicate Detection ---
+  // duplicates
 
-  // 7. Check for duplicate task (same title + subject + dueDate)
+  // 10. same title + subject + due date = duplicate
   const isDuplicate = state.records.some(
     (task) =>
       task.title.toLowerCase() === title.toLowerCase() &&
@@ -3124,7 +3082,7 @@ function validateTaskForm(formData) {
     setInlineError("task-title", "Duplicate task detected.");
   }
 
-  // Notes length
+  // notes length
   if (notes.length > 500) {
     errors.push({
       field: "task-notes",
@@ -3141,11 +3099,9 @@ function validateTaskForm(formData) {
 const taskForm = document.querySelector("#task-form");
 
 if (taskForm) {
-  // Initialize on load
   setMinDateToday();
   initReminderToggle();
 
-  // Reset button handler
   const resetBtn = document.querySelector("#task-form-reset");
   if (resetBtn) {
     resetBtn.addEventListener("click", () => {
@@ -3163,7 +3119,6 @@ if (taskForm) {
   taskForm.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    // Clear previous errors
     clearAllInlineErrors();
 
     const formData = new FormData(taskForm);
@@ -3174,7 +3129,7 @@ if (taskForm) {
       return;
     }
 
-    // Validation passed
+    // all good
     hideErrorSummary();
 
     const title = String(formData.get("title") ?? "").trim();
@@ -3202,7 +3157,7 @@ if (taskForm) {
       createdAt: new Date().toISOString(),
       estimatedMinutes: Math.round(estimatedHours * 60),
       workflowHistory: [],
-      // Store extra fields
+      // extra fields
       tags: tags
         ? tags
             .split(",")
@@ -3216,9 +3171,9 @@ if (taskForm) {
     if (added) {
       showToast(`Task "${title}" added successfully!`);
       taskForm.reset();
-      // Reset min dates after form reset
+      // reset wipes the min dates, put them back
       setMinDateToday();
-      // Hide reminder field after reset
+      // hide the reminder field again
       const reminderField = document.querySelector("#reminder-date-field");
       if (reminderField) reminderField.hidden = true;
       const checkbox = document.querySelector("#task-has-reminder");
@@ -3227,7 +3182,7 @@ if (taskForm) {
   });
 }
 
-/* ---------- Search: live dropdown with results / "no results" ---------- */
+// search dropdown
 const searchInput = document.querySelector("#global-search");
 const searchForm = document.querySelector("#search-form");
 const searchResults = document.querySelector("#search-results");
@@ -3298,12 +3253,12 @@ function renderSearchDropdown() {
   const fromDb = dbSearchReady(rawQuery);
 
   if (fromDb) {
-    // Results (and their order) come from the database.
+    // results + order come from the db
     searchHits = state.records
       .filter((task) => dbTaskSearch.order.has(task.id))
       .sort((a, b) => dbTaskSearch.order.get(a.id) - dbTaskSearch.order.get(b.id));
   } else {
-    // Database answer not here yet: show a local preview meanwhile.
+    // db hasn't answered yet, show local results for now
     searchHits = state.records
       .map((task) => ({ task, score: taskSearchScore(task, tokens) }))
       .filter((hit) => hit.score >= 0)
@@ -3364,7 +3319,7 @@ function renderSearchDropdown() {
   searchActiveIndex = -1;
 }
 
-/* Jump to one task: show it in the Tasks list, open its details, flash the row. */
+// jump to a task: show it in the list, open details, flash the row
 function openTaskFromSearch(id) {
   const task = state.records.find((record) => record.id === id);
   if (!task) return;
@@ -3396,7 +3351,7 @@ function openTaskFromSearch(id) {
   }
 }
 
-/* Show every match in the Tasks list. */
+// show all matches in the tasks list
 function showAllSearchResults() {
   state.query = searchInput.value.trim();
   state.page = 1;
@@ -3410,13 +3365,13 @@ if (searchInput && searchResults) {
   searchInput.addEventListener("input", () => {
     renderSearchDropdown();
 
-    // Ask the database; when it answers, redraw with its results.
+    // ask the db, redraw when it answers
     scheduleDbSearch(searchInput.value, () => {
       if (document.activeElement === searchInput) renderSearchDropdown();
       if (state.query.trim()) render();
     });
 
-    // If the Tasks list is already on screen, filter it as the person types.
+    // tasks list already open? filter it live
     const tasksVisible = !document.querySelector("#tasks")?.hidden;
     if (tasksVisible || !searchInput.value.trim()) {
       const next = searchInput.value.trim();
@@ -3515,7 +3470,7 @@ function bindSelect(selector, updateState) {
 
 const nav = document.querySelector(".primary-nav");
 
-/* Show one top-level section and mark its nav link as current. */
+// switch section + mark the nav link
 function goToSection(targetId) {
   if (!document.querySelector(`#app > section[id="${targetId}"]`)) return false;
 
@@ -3535,7 +3490,7 @@ function goToSection(targetId) {
     }
   });
 
-  // Let sections that load data on demand (e.g. Users) know they are visible.
+  // tell lazy-loading sections (like Users) they're showing
   document.dispatchEvent(new CustomEvent("section:shown", { detail: targetId }));
   return true;
 }
@@ -3552,7 +3507,7 @@ if (nav) {
   });
 }
 
-/* In-page shortcuts such as "See all tasks" and the user menu's Settings link. */
+// in-page links like "See all tasks" and Settings in the user menu
 document.addEventListener("click", (event) => {
   const shortcut = event.target.closest("[data-go]");
   if (!shortcut) return;
@@ -3561,7 +3516,7 @@ document.addEventListener("click", (event) => {
   if (goToSection(shortcut.dataset.go)) window.scrollTo({ top: 0 });
 });
 
-/* Close the user menu on outside click or Escape. */
+// close the user menu on outside click / Esc
 const userMenu = document.querySelector("#user-menu");
 if (userMenu) {
   document.addEventListener("click", (event) => {
@@ -3577,7 +3532,7 @@ if (userMenu) {
   });
 }
 
-/* Header "Add task" jumps to the dashboard form. */
+// header Add task -> dashboard form
 document.querySelector("#add-task-btn")?.addEventListener("click", () => {
   goToSection("dashboard");
   const form = document.querySelector("#task-form");
@@ -3586,13 +3541,13 @@ document.querySelector("#add-task-btn")?.addEventListener("click", () => {
   document.querySelector("#task-title")?.focus({ preventScroll: true });
 });
 
-/* Dashboard "Next up" status buttons reuse the normal workflow transition. */
+// next up status buttons use the normal transition
 document.querySelector("#next-up-list")?.addEventListener("click", (event) => {
   const button = event.target.closest('[data-action="transition"]');
   if (button) transitionTask(button.dataset.id, button.dataset.nextStatus);
 });
 
-/* Dashboard "Start focus" opens the focus timer. */
+// start focus opens the timer
 document.querySelector("#dash-start-focus")?.addEventListener("click", () => {
   const toggle = document.querySelector("#focus-toggle");
   if (toggle && toggle.getAttribute("aria-pressed") !== "true") toggle.click();
@@ -3608,7 +3563,7 @@ setText(
   }),
 );
 
-/* ---------- Profile (every role manages their OWN account) ---------- */
+// profile (everyone edits their own account)
 
 const profileUser = { ...(window.STUDYHUB_USER ?? {}) };
 
@@ -3630,7 +3585,7 @@ async function postProfile(body) {
   return response.json();
 }
 
-// Mark the field the server complained about (and clear old marks).
+// highlight whatever field the server complained about
 function markField(form, fieldName) {
   form.querySelectorAll("[aria-invalid]").forEach((field) => {
     field.removeAttribute("aria-invalid");
@@ -3656,7 +3611,7 @@ if (detailsForm) {
   fillDetails();
   setLabel("#profile-role", ROLES[profileUser.role]?.label ?? profileUser.role ?? "—");
 
-  // Only ask for the password once the email actually changes.
+  // only ask for the password if the email changed
   emailInput.addEventListener("input", () => {
     const changed =
       emailInput.value.trim().toLowerCase() !== String(profileUser.username ?? "");
@@ -3687,7 +3642,7 @@ if (detailsForm) {
       markField(detailsForm, null);
       profileUser.name = data.name;
       profileUser.username = data.email;
-      // Keep the header in sync with the new name.
+      // update the name in the header too
       setLabel("#user-label", data.name);
       setLabel("#user-initials", initialsOf(data.name));
       setLabel("#admin-name", data.name);
@@ -3745,8 +3700,7 @@ if (passwordForm) {
   });
 }
 
-/* After an admin resets the password, the user must pick a new one.
-   The server refuses everything else (403 "must_change_password") until then. */
+// after an admin reset they have to pick a new password, the server blocks everything else till then
 function showPasswordChangeRequired() {
   if (!goToSection("profile")) return;
   const note = document.querySelector("#profile-password-note");
@@ -3760,10 +3714,8 @@ function showPasswordChangeRequired() {
 
 if (profileUser.mustChangePassword) showPasswordChangeRequired();
 
-/* ---------- Users (Admin / Super Admin) ----------
-   The server decides what this viewer may do to each account and sends it as
-   user.can (e.g. ["edit","suspend"]). The page only ever offers those actions;
-   api/admin.php re-checks every request anyway. */
+// users (admin / super admin)
+// server sends user.can (like ["edit","suspend"]) and we only show those. admin.php checks again anyway
 
 const usersState = { search: "", role: "", status: "", page: 1, users: [], viewer: null };
 const ACCOUNT_STATUS_LABELS = {
@@ -3847,7 +3799,7 @@ async function loadUsers() {
   setLabel("#users-count", `${data.total} account${data.total === 1 ? "" : "s"}`);
   document.querySelector("#users-create-btn").hidden = !data.viewer.canCreate;
 
-  // "2 accounts are waiting for approval" (hidden while already filtering by it).
+  // "2 accounts waiting for approval" banner, hidden if already filtering by pending
   const pending = overview.ok ? overview.byStatus.pending ?? 0 : 0;
   const note = document.querySelector("#users-pending-note");
   note.hidden = pending === 0 || usersState.status === "pending";
@@ -3865,13 +3817,13 @@ async function loadUsers() {
       : "";
 }
 
-// Refresh everything an account change can affect.
+// refresh everything an account change could affect
 async function refreshAfterUserChange() {
   await loadUsers();
   loadAdminOverview();
 }
 
-/* ----- Manage dialog ----- */
+// manage dialog
 
 const userDialog = document.querySelector("#user-dialog");
 let dialogUserId = null;
@@ -3892,8 +3844,8 @@ function renderUserDialog(user) {
   const can = new Set(user.can);
   const parts = [];
 
-  // Shortcuts to this person's history (security log: Super Admin only).
-  // Admins only see students' and teachers' activity, so only offer it where it exists.
+  // links to this person's history. security log is super admin only, and admins
+  // only see student/teacher activity, so only show it where it exists
   const showActivity =
     currentUser?.role === "super_admin" || ["student", "teacher"].includes(user.role);
   parts.push(
@@ -4018,7 +3970,7 @@ function openUserDialog(id) {
   if (!userDialog.open) userDialog.showModal();
 }
 
-// Show a temporary password once, with a copy button.
+// show the temp password once w/ a copy button
 function secretBox(password) {
   return `<div class="secret-box">
       <code id="secret-value">${escapeHTML(password)}</code>
@@ -4027,7 +3979,6 @@ function secretBox(password) {
 }
 
 document.addEventListener("click", async (event) => {
-  // Copy a temporary password.
   const copy = event.target.closest("[data-copy-secret]");
   if (copy) {
     const value = copy.parentElement.querySelector("code")?.textContent ?? "";
@@ -4041,12 +3992,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  // Close buttons inside dialogs.
+  // dialog close buttons
   const close = event.target.closest("[data-close-dialog]");
   if (close) close.closest("dialog")?.close();
 });
 
-// Clicking the dark backdrop closes a dialog.
+// click the backdrop to close
 document.querySelectorAll(".admin-dialog").forEach((dialog) => {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
@@ -4097,7 +4048,7 @@ document.querySelector("#user-dialog-content")?.addEventListener("click", async 
     if (fresh) renderUserDialog(fresh);
     setFormMessage("#user-dialog-message", data.message);
 
-    // Temporary password: show it once, right under the message.
+    // temp password goes right under the message
     if (data.temporaryPassword) {
       document
         .querySelector("#user-dialog-message")
@@ -4110,13 +4061,13 @@ document.querySelector("#user-dialog-content")?.addEventListener("click", async 
   }
 });
 
-// Forget a shown temporary password when the dialog closes.
+// clear the temp password when the dialog closes
 userDialog?.addEventListener("close", () => {
   document.querySelector("#user-dialog-secret")?.remove();
   dialogUserId = null;
 });
 
-/* ----- Table: approve, manage, paging ----- */
+// table: approve, manage, paging
 
 document.querySelector("#users-table-body")?.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-user-act]");
@@ -4142,7 +4093,7 @@ document.querySelector("#users-pagination")?.addEventListener("click", (event) =
   loadUsers();
 });
 
-/* ----- Filters ----- */
+// filters
 
 const usersFilters = document.querySelector("#users-filters");
 if (usersFilters) {
@@ -4175,18 +4126,18 @@ function showPendingUsers() {
 }
 
 document.querySelector("#users-show-pending")?.addEventListener("click", () => {
-  showPendingUsers(); // goToSection fires section:shown, which reloads the list
+  showPendingUsers(); // section:shown reloads the list
 });
 document.querySelector("#admin-review-pending")?.addEventListener("click", (event) => {
   event.preventDefault();
-  showPendingUsers(); // goToSection fires section:shown, which loads the list
+  showPendingUsers(); // section:shown loads the list
 });
 
 document.addEventListener("section:shown", (event) => {
   if (event.detail === "users") loadUsers();
 });
 
-/* ----- Create account (Super Admin) ----- */
+// create account (super admin)
 
 const createDialog = document.querySelector("#user-create-dialog");
 const createForm = document.querySelector("#user-create-form");
@@ -4232,15 +4183,14 @@ createForm?.addEventListener("submit", async (event) => {
   }
 });
 
-// Forget the shown password when the create dialog closes.
+// same for the create dialog
 createDialog?.addEventListener("close", () => {
   const result = document.querySelector("#user-create-result");
   if (result) result.innerHTML = "";
 });
 
-/* ---------- Announcements on dashboards (every role) ----------
-   Text only (escaped), newest/important first. Dismissing remembers the
-   announcement's version, so an edited announcement shows again. */
+// dashboard announcements (all roles). text only + escaped, important/newest first.
+// dismissing saves the version, so if it gets edited it shows up again
 
 const DISMISSED_KEY = `studyhub-dismissed-announcements-${currentUser?.id ?? "guest"}`;
 
@@ -4287,15 +4237,14 @@ document.addEventListener("click", (event) => {
   try {
     localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissed));
   } catch {
-    /* storage blocked: it just hides for this visit */
+    /* storage blocked, just hides for now */
   }
   renderAnnouncements();
 });
 
 renderAnnouncements();
 
-/* ---------- Admin Settings: announcements, sign-ups, backup ----------
-   Sign-ups + backup cards are Super Admin only (the server refuses others). */
+// admin settings: announcements, signups, backup (last two are super admin only)
 
 const annForm = document.querySelector("#ann-form");
 let annItems = [];
@@ -4407,7 +4356,7 @@ document.querySelector("#ann-list")?.addEventListener("click", async (event) => 
   if (!del) return;
   const id = Number(del.dataset.annDelete);
   if (annConfirmDelete !== id) {
-    // First click arms it; second click deletes.
+    // click once to arm, again to delete
     annConfirmDelete = id;
     renderAnnouncementList();
     document.querySelector(`[data-ann-delete="${id}"]`)?.focus();
@@ -4449,9 +4398,8 @@ if (document.querySelector("#admin-settings")) {
   });
 }
 
-/* ---------- Moderation: review one user's content ----------
-   View + remove with a reason, never edit. The server checks rank, ownership
-   of each item, logs the viewing, and tells the owner about each removal. */
+// moderation: view + remove w/ a reason, no editing. server checks rank + ownership,
+// logs the viewing and tells the owner about removals
 
 const contentDialog = document.querySelector("#content-dialog");
 const contentState = { userId: 0, canDelete: false, tab: "tasks", data: null, confirming: null };
@@ -4579,7 +4527,7 @@ contentDialog?.addEventListener("click", async (event) => {
     contentDialog.querySelector("[data-content-reason]")?.focus();
     return;
   }
-  // Drop it locally (re-fetching would log another "viewed" entry).
+  // remove it locally, refetching would log another "viewed"
   contentState.data[kind] = contentState.data[kind].filter((item) => item.id !== itemId);
   contentState.confirming = null;
   renderContentList();
@@ -4587,7 +4535,7 @@ contentDialog?.addEventListener("click", async (event) => {
   loadAdminReports();
 });
 
-// Manage dialog -> Review content.
+// manage dialog -> review content
 document.querySelector("#user-dialog-content")?.addEventListener("click", (event) => {
   if (!event.target.closest("[data-open-content]")) return;
   const user = usersState.users.find((u) => u.id === dialogUserId);
@@ -4595,9 +4543,7 @@ document.querySelector("#user-dialog-content")?.addEventListener("click", (event
   if (user) openContentDialog(user);
 });
 
-/* ---------- Logs (Admin / Super Admin) ----------
-   Activity = what people did (tasks, classes, notes, imports).
-   Security = sign-ins and account changes; Super Admin only (server-enforced). */
+// logs. activity = what people did, security = sign-ins + account changes (super admin only)
 
 const isSuperAdmin = currentUser?.role === "super_admin";
 const logsState = { tab: "activity", search: "", type: "", period: "7", page: 1, userId: 0, userName: "" };
@@ -4612,7 +4558,7 @@ const ACTIVITY_LABELS = {
   RESET: "Reset their data",
   MODERATION_DELETE: "Removed by an admin",
 };
-// (announcement + settings events are added to SECURITY_LABELS below)
+// announcement/settings events get added to SECURITY_LABELS further down
 const SECURITY_LABELS = {
   LOGIN: "Signed in",
   LOGOUT: "Signed out",
@@ -4640,7 +4586,7 @@ const SECURITY_LABELS = {
   SETTINGS_CHANGED: "Settings changed",
   BACKUP_DOWNLOADED: "Backup downloaded",
 };
-// Events worth a second look get a warning tint (always with their text label).
+// sus events get a warning tint (still with the text label)
 const ALERT_EVENTS = new Set([
   "LOGIN_FAILED",
   "LOGIN_BLOCKED",
@@ -4687,7 +4633,7 @@ function renderLogRows(rows) {
       )
       .join("");
   } else {
-    // IP sits under the time: six columns don't fit beside the sidebar.
+    // IP goes under the time, 6 columns don't fit next to the sidebar
     head.innerHTML = "<tr><th>When</th><th>Event</th><th>By</th><th>Account</th><th>Details</th></tr>";
     body.innerHTML = rows
       .map(
@@ -4726,7 +4672,7 @@ async function loadLogs() {
   document.querySelector("#logs-empty").hidden = data.rows.length > 0;
   setLabel("#logs-count", `${data.total} entr${data.total === 1 ? "y" : "ies"}`);
 
-  // Type filter: the types that actually occur, with readable names.
+  // type filter, only types that actually show up
   const labels = logsState.tab === "activity" ? ACTIVITY_LABELS : SECURITY_LABELS;
   document.querySelector("#logs-type").innerHTML =
     `<option value="">All types</option>` +
@@ -4771,12 +4717,12 @@ function setLogUser(id, name) {
   setLabel("#logs-user-name", logsState.userName);
 }
 
-// Open the Logs page on a given tab, optionally for one person.
+// open logs on a tab, optionally for one person
 function openLogs(tab, userId = 0, userName = "") {
   setLogTab(tab);
   setLogUser(userId, userName);
   if (userId) {
-    // A person's history is more useful without the 7-day limit.
+    // no 7 day limit when looking at one person
     logsState.period = "";
     const period = document.querySelector("#logs-period");
     if (period) period.value = "";
@@ -4830,7 +4776,7 @@ if (document.querySelector("#logs")) {
     openLogs("security");
   });
 
-  // Manage dialog -> this person's history.
+  // manage dialog -> their history
   document.querySelector("#user-dialog")?.addEventListener("click", (event) => {
     const link = event.target.closest("[data-open-log]");
     if (!link) return;
@@ -4855,7 +4801,7 @@ if (archivesDialog && openArchivesButton) {
 
   openArchivesButton.addEventListener("click", () => {
     if (archivesDialog.hasAttribute("open")) return;
-    // Start fresh: no half-finished delete or old status from last time.
+    // reset leftover state from last time
     archiveDeleteId = null;
     setArchiveStatus("");
     renderArchives();
@@ -4869,7 +4815,7 @@ if (archivesDialog && openArchivesButton) {
     .querySelector("#close-archives")
     ?.addEventListener("click", closeArchives);
 
-  /* A click on the dark backdrop lands on the <dialog> itself, not on its content. */
+  // backdrop clicks hit the <dialog> itself, not what's inside
   archivesDialog.addEventListener("click", (event) => {
     if (event.target === archivesDialog) closeArchives();
   });
@@ -4915,7 +4861,7 @@ function showWorkflowMessage(message) {
   messageRegion.textContent = message;
   messageRegion.hidden = false;
 
-  // Fade out after a few seconds; a newer message restarts the timer.
+  // fades after a few secs, a new message restarts it
   clearTimeout(showWorkflowMessage.timer);
   messageRegion.classList.remove("is-leaving");
   showWorkflowMessage.timer = setTimeout(() => {
@@ -5070,7 +5016,7 @@ function getStoredTheme() {
     const stored = localStorage.getItem(THEME_KEY);
     return Object.hasOwn(THEME_CHOICES, stored) ? stored : "dark";
   } catch {
-    return "dark"; /* storage blocked (private mode etc.) */
+    return "dark"; /* storage blocked */
   }
 }
 
@@ -5118,7 +5064,7 @@ if (themeOptions.length) {
     });
   });
 
-  /* While on "Match my device", follow OS changes live. */
+  // "match my device" follows the OS live
   if (lightQuery) {
     lightQuery.addEventListener("change", () => {
       if (getStoredTheme() === "system") applyTheme("system");
@@ -5153,8 +5099,7 @@ function closeImportPreview() {
   if (preview) preview.hidden = true;
 }
 
-/* Import and Reset replace everything in the database (api/data.php), then
-   reload the page so it shows exactly what the database now holds. */
+// import/reset replace everything in the db (data.php), then reload so the page matches
 const FLASH_KEY = "studyhub-flash";
 
 async function replaceDataOnServer(body, button, busyLabel) {
@@ -5190,13 +5135,13 @@ async function replaceDataOnServer(body, button, busyLabel) {
   }
 }
 
-// Reload into the new data, carrying a one-line confirmation across the reload.
+// reload, and carry a confirm message across it
 function reloadWithMessage(message, theme) {
   try {
     sessionStorage.setItem(FLASH_KEY, message);
     if (theme) localStorage.setItem(THEME_KEY, theme);
   } catch {
-    /* storage blocked: the reload still shows the new data */
+    /* storage blocked, reload still works */
   }
   window.location.reload();
 }
@@ -5246,7 +5191,7 @@ function runPersistenceAssertions() {
     "Persistence assertion 4 failed: a missing required collection was accepted.",
   );
 
-  // A complete, valid task used only by the checks below.
+  // valid test task for the checks below
   const testTask = {
     id: "TASK-TEST",
     title: "Persistence test task",
@@ -5260,8 +5205,7 @@ function runPersistenceAssertions() {
     workflowHistory: [],
   };
 
-  // Control: the test task on its own is valid, so the rejections below are
-  // caused only by the duplicate ID / missing field.
+  // sanity check: the test task alone passes, so any fail below is from the dup id / missing field
   const singleTask = clone(valid);
   singleTask.records = [clone(testTask)];
   console.assert(
@@ -5429,7 +5373,6 @@ document.querySelector("#btn-confirm-reset")?.addEventListener("click", async (e
   );
 });
 
-// Initial render
 runPersistenceAssertions();
 runDashboardMetricAssertions();
 updatePreferenceControls();
@@ -5874,20 +5817,20 @@ if (syncClassroomAssignments()) render();
 clearLegacyTeacherSamples();
 renderClassroom();
 
-// Dev role switch (only visible with ?dev=1)
+// dev role switch (?dev=1)
 if (new URLSearchParams(location.search).has("dev")) {
   const devSwitch = document.querySelector("#dev-role-switch");
   const devSelect = document.querySelector("#dev-role");
   if (devSwitch && devSelect) {
     devSwitch.style.display = "flex";
-    // Set dropdown to current effective role (real or override)
+    // show the current role (real or override)
     devSelect.value = session.role;
     devSelect.addEventListener("change", () => {
       const role = devSelect.value;
       if (role === "__clear__") {
-        // Clear override, return to real role
+        // back to the real role
         sessionStorage.removeItem("devRoleOverride");
-        // Also sync in-memory session immediately so guards work NOW
+        // update the session now so the guards work right away
         const realUser = AUTH.getSessionUser();
         if (realUser) {
           session.role = realUser.role;
@@ -5895,17 +5838,17 @@ if (new URLSearchParams(location.search).has("dev")) {
         }
         showMessage("Dev override cleared. Reloading as real role…");
       } else {
-        // Persist dev role override so it survives page reload
+        // save it so it survives a reload
         sessionStorage.setItem("devRoleOverride", role);
-        // IMMEDIATELY sync in-memory session so allowed() works NOW (before reload)
+        // sync now so allowed() works before the reload
         session.role = role;
         currentUser = { ...currentUser, role };
         showMessage(`Dev role → ${role}. Guards active. Reloading in 10s…`);
       }
-      // Small delay so you can test immediate guards, then FORCE reload
+      // small delay, then reload
       setTimeout(() => {
         try {
-          // Use location.reload() to force navigation even if URL unchanged
+          // reload() even if the url didn't change
           console.log("[dev-switch] Forcing reload...");
           location.reload();
         } catch (e) {

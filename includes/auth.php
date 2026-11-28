@@ -1,13 +1,8 @@
 <?php
-// includes/auth.php
-// Session start, login check and account re-validation. Used by every protected page.
-//
-// The session only remembers WHO you are (your user id + a session version).
-// On every request current_user() re-reads your account from the database, so:
-//   - a suspension or ban takes effect immediately (you are signed out),
-//   - a role change takes effect immediately,
-//   - bumping users.session_version signs you out everywhere
-//     (used after an admin resets your password).
+// session + login check, used by every protected page.
+// session only stores the user id + session version. current_user() re-reads the account
+// from the db every request, so bans/role changes kick in right away, and bumping
+// session_version logs you out everywhere (used after a password reset)
 
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax']);
@@ -17,11 +12,10 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/permissions.php';
 
-// Why the last current_user() call returned null (for a helpful message).
-// One of: '' (no session) | 'signed_out' | 'pending' | 'suspended' | 'banned'
+// why current_user() last returned null: '' | 'signed_out' | 'pending' | 'suspended' | 'banned'
 $GLOBALS['AUTH_FAILURE'] = '';
 
-/** Return the logged-in user, or null. Re-checked against the database once per request. */
+// logged in user or null, checked against the db once per request
 function current_user(): ?array
 {
     static $checked = false;
@@ -45,13 +39,13 @@ function current_user(): ?array
     mysqli_stmt_execute($stmt);
     $row = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
-    // Account deleted, or signed out everywhere (password reset, etc.).
+    // account deleted or logged out everywhere
     if (!$row || (int) $row['session_version'] !== (int) ($sessionUser['v'] ?? 0)) {
         end_session('signed_out', $row ? (int) $row['id'] : null);
         return null;
     }
 
-    // Suspended / banned / pending while logged in: sign out now.
+    // got suspended/banned while logged in, kick them out
     if ($row['status'] !== 'active') {
         end_session($row['status'], (int) $row['id']);
         return null;
@@ -64,13 +58,13 @@ function current_user(): ?array
         'role'                 => $row['role'],   // student | teacher | admin | super_admin
         'must_change_password' => (bool) $row['must_change_password'],
     ];
-    // Keep the session copy fresh (e.g. after a role change).
+    // keep the session copy up to date (role changes etc)
     $_SESSION['user']['name'] = $user['name'];
     $_SESSION['user']['role'] = $user['role'];
     return $user;
 }
 
-/** Throw away the session because the account may no longer use it. */
+// kill the session, account can't use it anymore
 function end_session(string $reason, ?int $userId): void
 {
     $GLOBALS['AUTH_FAILURE'] = $reason;
@@ -81,7 +75,7 @@ function end_session(string $reason, ?int $userId): void
     }
 }
 
-/** A short message explaining why the request was refused (for 401 replies). */
+// short msg for why it got refused (401s)
 function auth_failure_message(): string
 {
     switch ($GLOBALS['AUTH_FAILURE']) {
@@ -93,13 +87,12 @@ function auth_failure_message(): string
     }
 }
 
-/** A machine-readable code the page can use to show the right notice on login.html. */
+// code for login.html so it shows the right notice
 function auth_failure_code(): string
 {
     return $GLOBALS['AUTH_FAILURE'] ?: 'not_logged_in';
 }
 
-/** Stop a JSON API request with an error. */
 function api_refuse(int $httpCode, string $message, string $code): void
 {
     http_response_code($httpCode);
@@ -108,12 +101,9 @@ function api_refuse(int $httpCode, string $message, string $code): void
     exit;
 }
 
-/**
- * The user for a JSON API request, or stop with:
- *   401  not logged in / signed out / suspended / banned
- *   403  an admin reset the password and a new one hasn't been chosen yet
- *        (only api/profile.php passes $allowPasswordChange = true)
- */
+// user for an API request, otherwise stops with
+//   401 not logged in / signed out / suspended / banned
+//   403 has to set a new password after a reset (only profile.php passes true)
 function api_user(bool $allowPasswordChange = false): array
 {
     $user = current_user();
@@ -126,7 +116,6 @@ function api_user(bool $allowPasswordChange = false): array
     return $user;
 }
 
-/** Send the visitor to login.html if not logged in. */
 function require_login(): array
 {
     $user = current_user();
@@ -138,10 +127,8 @@ function require_login(): array
     return $user;
 }
 
-/**
- * Record a security event (logins, failed logins, role/status changes, ...).
- * Never throws: a logging problem must not break login.
- */
+// log a security event (logins, fails, role/status changes).
+// never throws, a logging problem shouldn't break login
 function log_security_event(string $event, ?int $actorId, ?int $targetUserId, string $details = ''): void
 {
     global $conn;

@@ -1,16 +1,8 @@
--- StudyHub: roles + account status (Super Admin / Admin / Regular user).
--- Run this in phpMyAdmin (inside the studyhub database). SAFE TO RE-RUN.
--- Needs MariaDB (XAMPP's default) for "ADD COLUMN IF NOT EXISTS".
--- (New install? Import db/studyhub.sql instead - it already has all of this.)
---
--- What it adds:
---   users.role                 + 'super_admin'
---   users.status               active | pending | suspended | banned
---   users.status_reason        shown to the user when they are blocked
---   users.must_change_password set after an admin resets a password
---   users.session_version      bumping it signs the user out everywhere
---   security_log               logins, failed logins, role/status changes
---                              (Super Admin only; separate from audit_log)
+-- roles + account status. run in phpMyAdmin inside the studyhub db, safe to re-run.
+-- needs MariaDB for ADD COLUMN IF NOT EXISTS (xampp has it).
+-- fresh install? just import studyhub.sql instead.
+-- adds users.role (super_admin), status, status_reason, must_change_password,
+-- session_version, and the security_log table
 
 USE studyhub;
 

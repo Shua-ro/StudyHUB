@@ -1,21 +1,12 @@
 <?php
-// includes/permissions.php
-// THE ONE PLACE that decides who may do what to whom.
-// Every admin/staff endpoint must ask permission_denied() before acting.
-//
-// Roles, lowest to highest rank:
-//   student, teacher  (rank 1, "regular users")
-//   admin             (rank 2)
-//   super_admin       (rank 3)
-//
-// The hard rules (see the role/permission matrix agreed for the course):
-//   1. You can only act on accounts of LOWER rank than you. Equal or higher is refused.
-//   2. You can never act on your own account through admin tools
-//      (no self-promotion, self-suspension, self-reset). Use the profile page.
-//   3. Only a Super Admin changes roles, and never TO super_admin.
-//      Super Admins are created in the database only.
-//   4. There must always be at least one active Super Admin.
-//   5. Admins may view and delete regular users' content (with a reason), never edit it.
+// who can do what to whom. every admin/staff endpoint has to call permission_denied() first.
+// ranks: student/teacher = 1, admin = 2, super_admin = 3
+// rules (from the course role matrix):
+//   1. you can only act on accounts ranked LOWER than you
+//   2. never on yourself through admin tools, use the profile page for that
+//   3. only super admins change roles, and never TO super_admin (those get made in the db)
+//   4. there's always gotta be at least one active super admin
+//   5. admins can view/delete regular users' content (with a reason) but never edit it
 
 const ROLE_RANK = [
     'student'     => 1,
@@ -31,10 +22,10 @@ const ROLE_LABELS = [
     'super_admin' => 'Super Admin',
 ];
 
-// Roles a Super Admin may give through the app. super_admin is deliberately absent.
+// roles a super admin can hand out, super_admin left out on purpose
 const ASSIGNABLE_ROLES = ['student', 'teacher', 'admin'];
 
-// Actions that don't target a specific account, and the minimum rank they need.
+// actions that don't target an account + min rank
 const GLOBAL_ACTIONS = [
     'users.list'           => 2,   // see the user list
     'reports.view'         => 2,   // site-wide usage stats
@@ -46,8 +37,7 @@ const GLOBAL_ACTIONS = [
     'backup.full'          => 3,   // whole-database backup
 ];
 
-// Actions on another user's account or content, and the minimum rank they need.
-// The target must also be of LOWER rank than the actor (rule 1).
+// actions on someone else's account/content + min rank. target still has to be lower rank (rule 1)
 const TARGET_ACTIONS = [
     'user.view'           => 2,
     'user.edit'           => 2,   // display name / email
@@ -72,19 +62,14 @@ function role_label(?string $role): string
     return ROLE_LABELS[$role ?? ''] ?? 'Unknown';
 }
 
-/** Admins and Super Admins. */
+// admin or super admin
 function is_staff_role(?string $role): bool
 {
     return role_rank($role) >= 2;
 }
 
-/**
- * Decide whether $actor may perform $action (optionally on $target).
- *
- * Returns NULL when allowed, or a short human-readable reason when refused.
- * $actor / $target are arrays with at least 'id' and 'role'.
- * $extra may hold 'new_role' for user.change_role.
- */
+// can $actor do $action (optionally to $target)?
+// null = yes, otherwise a short reason. $extra can have 'new_role' for user.change_role
 function permission_denied(array $actor, string $action, ?array $target = null, array $extra = []): ?string
 {
     $actorRank = role_rank($actor['role'] ?? null);
@@ -96,7 +81,7 @@ function permission_denied(array $actor, string $action, ?array $target = null, 
     }
 
     if (!isset(TARGET_ACTIONS[$action])) {
-        return 'Unknown action.';   // fail closed: anything not listed is refused
+        return 'Unknown action.';   // not listed = nope
     }
     if ($actorRank < TARGET_ACTIONS[$action]) {
         return 'You do not have permission to do that.';
@@ -105,17 +90,17 @@ function permission_denied(array $actor, string $action, ?array $target = null, 
         return 'No account was selected.';
     }
 
-    // Rule 2: never through admin tools on yourself.
+    // rule 2: not on yourself
     if ((int) $actor['id'] === (int) $target['id']) {
         return 'You cannot do this to your own account. Use your profile instead.';
     }
 
-    // Rule 1: only on lower-ranked accounts.
+    // rule 1: lower rank only
     if (role_rank($target['role'] ?? null) >= $actorRank) {
         return 'You can only manage accounts with a lower role than yours.';
     }
 
-    // Rule 3: role changes.
+    // rule 3: role changes
     if ($action === 'user.change_role') {
         $newRole = $extra['new_role'] ?? null;
         if (!in_array($newRole, ASSIGNABLE_ROLES, true)) {
@@ -129,15 +114,12 @@ function permission_denied(array $actor, string $action, ?array $target = null, 
     return null;
 }
 
-/**
- * Rule 4: refuse anything that would leave no active Super Admin.
- * Call this before changing the role/status of, or deleting, $target.
- * Returns NULL when it is safe, or a reason when it is not.
- */
+// rule 4: don't let the last active super admin get demoted/suspended/deleted.
+// call before changing role/status or deleting. null = fine, otherwise a reason
 function last_super_admin_guard(mysqli $conn, array $target, ?string $newRole = null, ?string $newStatus = null, bool $deleting = false): ?string
 {
     if (($target['role'] ?? null) !== 'super_admin') {
-        return null;   // only matters when the target is a Super Admin
+        return null;   // only matters for super admins
     }
     $losesPower = $deleting
         || ($newRole !== null && $newRole !== 'super_admin')

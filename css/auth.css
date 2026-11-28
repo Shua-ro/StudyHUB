@@ -278,8 +278,7 @@ a {
   font-size: 13px;
 }
 
-/* The hidden attribute must win over component display rules
-   (e.g. .auth-form is display:flex, which would otherwise keep it visible). */
+/* [hidden] has to win over stuff like .auth-form { display: flex } */
 [hidden] {
   display: none !important;
 }
@@ -289,7 +288,7 @@ a {
   cursor: not-allowed;
 }
 
-/* Neutral notices: "waiting for approval", "you were signed out". */
+/* neutral notices (waiting for approval, signed out) */
 .auth-message.is-info {
   border-color: rgba(79, 214, 168, 0.35);
   background: rgba(79, 214, 168, 0.08);
@@ -308,9 +307,7 @@ a {
   text-decoration: none;
 }
 
-/* ==========================================================================
-   Right-hand panel: a live-looking preview of StudyHub (decorative).
-   ========================================================================== */
+/* right side: fake app preview, just decoration */
 .visual-panel {
   --pv-surface: rgba(9, 20, 16, 0.82);
   --pv-border: rgba(255, 255, 255, 0.1);
@@ -332,7 +329,7 @@ a {
     linear-gradient(160deg, #0f3a2d, #0c2b23 55%, #0a1a15);
 }
 
-/* Faint dot grid so the gradient has texture instead of reading as empty. */
+/* dot grid so the gradient doesn't look empty */
 .visual-panel::before {
   content: "";
   position: absolute;
@@ -392,7 +389,7 @@ a {
   line-height: 1.6;
 }
 
-/* ---------- Preview stage ---------- */
+/* preview stage */
 .preview-stage {
   position: relative;
   flex: 1;
@@ -599,7 +596,7 @@ a {
   }
 }
 
-/* Focus ring: fills like a real timer */
+/* focus ring */
 @property --pv-angle {
   syntax: "<percentage>";
   inherits: false;
@@ -727,7 +724,7 @@ a {
   stroke-linejoin: round;
 }
 
-/* Narrower desktop panels: keep the main card + one floating card, no overlap. */
+/* narrower screens: main card + one floating card so they don't overlap */
 @media (max-width: 1180px) {
   .pv-class {
     display: none;

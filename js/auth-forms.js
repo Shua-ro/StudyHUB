@@ -1,5 +1,4 @@
-/* StudyHub login/signup form handler (static pages).
-   Sends JSON to the server endpoints and shows any error message. */
+// login/signup form, posts JSON and shows errors
 (() => {
   const form = document.querySelector("#auth-form");
   if (!form) return;
@@ -7,15 +6,14 @@
   const box = document.querySelector("#auth-message");
   const button = form.querySelector('button[type="submit"]');
 
-  // type: "error" (default) or "info" (neutral, e.g. "waiting for approval")
+  // type: "error" or "info" (like waiting for approval)
   function show(text, type = "error") {
     box.textContent = text;
     box.hidden = !text;
     box.classList.toggle("is-info", type === "info");
   }
 
-  /* Why the user landed on the login page (set by the server, see
-     includes/auth.php). Only known codes are shown; anything else is ignored. */
+  // why they ended up on the login page (server sets it, see auth.php). unknown codes get ignored
   const NOTICES = {
     suspended:
       "Your account has been suspended. Log in to see the reason, or contact an administrator.",
@@ -28,8 +26,8 @@
     show(NOTICES[notice], notice === "signed_out" || notice === "pending" ? "info" : "error");
   }
 
-  /* Sign-up page: reflect the Super Admin's switches (the server enforces
-     them anyway; this just avoids filling in a form that will be refused). */
+  // signup page: match the super admin's switches. server checks anyway,
+  // this just saves filling out a form that'll get rejected
   if (mode === "signup") {
     fetch("api/signup.php")
       .then((res) => res.json())
@@ -50,7 +48,7 @@
         }
       })
       .catch(() => {
-        /* if this check fails, the server still decides on submit */
+        /* whatever, server still checks on submit */
       });
   }
 
@@ -80,7 +78,7 @@
       const out = await res.json().catch(() => ({}));
       if (!res.ok) return show(out.error || "Something went wrong. Please try again.");
 
-      // Teacher signups wait for approval: stay here and explain.
+      // teachers have to wait for approval, so stay here and say so
       if (out.pending) {
         form.reset();
         return show(out.message, "info");

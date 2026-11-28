@@ -1,14 +1,10 @@
 <?php
-// Functions that read tasks from the database.
-// Only this file knows the names of the task columns.
 
 require_once __DIR__ . '/db.php';
 
-// Get all tasks of one user (archived tasks too).
-// Each task is returned in the same shape that app.js uses.
+// all of a user's tasks incl. archived, shaped like app.js expects
 function get_tasks_for_user($conn, $userId)
 {
-    // Step 1: get the tasks
     $sql = 'SELECT id, title, subject, description, due_date, priority,
                    status, estimated_minutes, tags, reminder_date, created_at
             FROM tasks
@@ -20,7 +16,7 @@ function get_tasks_for_user($conn, $userId)
     $result = mysqli_stmt_get_result($stmt);
     $rows = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
-    // Step 2: get the status history of those tasks
+    // status history for those tasks
     $sql = 'SELECT h.task_id, h.previous_status, h.next_status,
                    h.action_label, h.changed_at
             FROM task_history h
@@ -33,7 +29,7 @@ function get_tasks_for_user($conn, $userId)
     $result = mysqli_stmt_get_result($stmt);
     $historyRows = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
-    // Put the history entries in groups, one group for each task
+    // group history by task
     $historyByTask = [];
     foreach ($historyRows as $h) {
         $historyByTask[$h['task_id']][] = [
@@ -44,7 +40,7 @@ function get_tasks_for_user($conn, $userId)
         ];
     }
 
-    // Step 3: build the list that app.js needs
+    // build what app.js needs
     $tasks = [];
     foreach ($rows as $row) {
         $tasks[] = [

@@ -1,10 +1,8 @@
 <?php
-// Functions that read user preferences from the database.
 
 require_once __DIR__ . '/db.php';
 
-// Get preferences for one user.
-// Returns array with keys matching app.js preferences structure.
+// user prefs, keys match app.js
 function get_preferences_for_user($conn, $userId)
 {
     $sql = 'SELECT theme, filter_status, filter_priority, sort_key, sort_direction, page_size
@@ -31,7 +29,7 @@ function get_preferences_for_user($conn, $userId)
         ];
     }
 
-    // Defaults if no row exists
+    // no row yet = defaults
     return [
         'theme'   => 'system',
         'filters' => ['status' => 'ALL', 'priority' => 'ALL'],
@@ -40,8 +38,7 @@ function get_preferences_for_user($conn, $userId)
     ];
 }
 
-// Get Pomodoro preferences for one user.
-// Returns array with durations in seconds.
+// pomodoro prefs, in seconds
 function get_pomodoro_preferences_for_user($conn, $userId)
 {
     $sql = 'SELECT focus_duration, short_duration, long_duration
@@ -61,7 +58,7 @@ function get_pomodoro_preferences_for_user($conn, $userId)
         ];
     }
 
-    // Defaults if no row exists (in seconds)
+    // defaults (seconds)
     return [
         'focusDuration' => 1500,  // 25 min
         'shortDuration' => 300,   // 5 min

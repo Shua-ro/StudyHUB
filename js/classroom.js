@@ -1,6 +1,4 @@
-// js/classroom.js
-// Student Classroom page: joined classes, class updates, and the Join class form.
-// (The teacher Classroom page lives in js/teacher_classroom.js.)
+// student classroom page: joined classes, updates, join form (teacher one is teacher_classroom.js)
 (function () {
   var API_URL = "api/classroom.php";
 

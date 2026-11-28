@@ -1,12 +1,7 @@
-// js/teacher_classroom.js
-// The teacher's Classroom page. Two views inside #teacher-classroom:
-//   1. Class list  - search (database) + one card per class + "Create class"
-//   2. One class   - banner with the class code, then tabs:
-//        Stream     announcements / materials (api/classroom.php)
-//        Classwork  assigned tasks + turned-in progress (api/classroom_tasks.php)
-//        People     students who joined
-// Grading stays on the Submissions page (js/classroom_tasks.js); "Review"
-// buttons here jump there, filtered to this class.
+// teacher classroom page, two views inside #teacher-classroom:
+//   class list - search + cards + create class
+//   one class  - code banner + Stream / Classwork / People tabs
+// grading lives on the Submissions page (classroom_tasks.js), the Review buttons jump there
 (function () {
   "use strict";
 
@@ -87,7 +82,7 @@
     return (Number.isInteger(n) ? String(n) : n.toFixed(1)) + " pts";
   }
 
-  /* ---------- Server ---------- */
+  // server
 
   function getJson(url) {
     return fetch(url, { credentials: "same-origin" }).then(function (res) {
@@ -132,14 +127,14 @@
       });
   }
 
-  // Search goes to the database (api/classroom.php?q=...), debounced.
+  // search hits the db, debounced
   function searchClasses(query) {
     state.query = query;
     var seq = ++state.searchSeq;
     var url = CLASS_API + (query ? "?q=" + encodeURIComponent(query) : "");
     return getJson(url)
       .then(function (data) {
-        if (seq !== state.searchSeq) return;   // a newer search already started
+        if (seq !== state.searchSeq) return;   // newer search already going
         state.classes = data.classrooms || [];
         renderList();
       })
@@ -148,14 +143,14 @@
       });
   }
 
-  // After grading/assigning, the dashboard numbers on other pages need refreshing too.
+  // dashboard numbers on other pages need a refresh too after grading/assigning
   function syncOtherPages() {
     if (window.classroomTasks && typeof window.classroomTasks.reload === "function") {
       window.classroomTasks.reload();
     }
   }
 
-  /* ---------- Derived data ---------- */
+  // derived data
 
   function findClass(id) {
     for (var i = 0; i < state.classes.length; i++) {
@@ -168,7 +163,7 @@
     return state.tasks
       .filter(function (t) { return String(t.classroom_id) === String(id); })
       .sort(function (a, b) {
-        // Upcoming first, then past due, then no due date.
+        // upcoming, then past due, then no date
         if (!a.due_date && !b.due_date) return b.id - a.id;
         if (!a.due_date) return 1;
         if (!b.due_date) return -1;
@@ -204,7 +199,7 @@
     }).length;
   }
 
-  /* ---------- Rendering: shared ---------- */
+  // rendering: shared
 
   function emptyState(title, text, actionHtml) {
     return (
@@ -225,7 +220,7 @@
     else renderList();
   }
 
-  /* ---------- Rendering: class list ---------- */
+  // rendering: class list
 
   function renderList() {
     var grid = $("tc-class-grid");
@@ -280,7 +275,7 @@
       .join("");
   }
 
-  /* ---------- Rendering: one class ---------- */
+  // rendering: one class
 
   function renderDetail(c) {
     $("tc-crumb-current").textContent = c.title;
@@ -468,7 +463,7 @@
       body;
   }
 
-  /* ---------- Navigation ---------- */
+  // navigation
 
   function openClass(id, tab) {
     state.openClassId = String(id);
@@ -500,7 +495,7 @@
     if (focus) $("tc-tab-" + name).focus();
   }
 
-  /* ---------- Forms ---------- */
+  // forms
 
   function formError(form, message) {
     var el = form.querySelector(".form-message");
@@ -607,7 +602,7 @@
       });
   }
 
-  /* ---------- Dialog (create / edit class, confirm deletes) ---------- */
+  // dialog (create / edit class, confirm deletes)
 
   var dialogSave = null;
 
@@ -711,7 +706,7 @@
     });
   }
 
-  /* ---------- Events ---------- */
+  // events
 
   function copyCode(code, btn) {
     var done = function () {
@@ -828,7 +823,7 @@
       }
     });
 
-    // Tabs: arrow keys move between them (WAI-ARIA tabs pattern).
+    // arrow keys between tabs
     section.querySelector(".tc-tabs").addEventListener("keydown", function (e) {
       var order = ["stream", "classwork", "people"];
       var i = order.indexOf(state.tab);
@@ -841,7 +836,7 @@
       showTab(order[i], true);
     });
 
-    // Dialog save: one handler, the current dialog decides what it does.
+    // one save handler, whatever dialog is open decides what it does
     $("tc-dialog-form").addEventListener("submit", function (e) {
       e.preventDefault();
       if (!dialogSave) return closeDialog();
@@ -854,8 +849,7 @@
     });
   }
 
-  // Load when the teacher opens the Classroom page; refresh on every visit
-  // (grades may have changed on the Submissions page). Keeps the open class.
+  // load when the teacher opens the page and refresh every visit (grades might've changed). keeps the open class
   document.addEventListener("section:shown", function (e) {
     if (e.detail !== "teacher-classroom") return;
     bind();

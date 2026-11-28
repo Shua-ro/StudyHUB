@@ -1,30 +1,7 @@
 <?php
-// api/admin.php
-// Admin / Super Admin tools. EVERY action asks includes/permissions.php first,
-// and every change to someone else's account is written to the security log
-// with who did it, to whom, and why.
-//
-// Actions                     permission              who
-//   overview                  reports.view            Admin, Super Admin
-//   list_users                users.list              Admin, Super Admin
-//   approve                   user.approve            Admin+ (lower-ranked, pending accounts)
-//   set_status                user.suspend/ban/reactivate   Admin+ (lower-ranked)
-//   reset_password            user.reset_password     Admin+ (lower-ranked)
-//   edit_user                 user.edit               Admin+ (lower-ranked)
-//   change_role               user.change_role        Super Admin only
-//   create_user               users.create            Super Admin only
-//   delete_user               user.delete             Super Admin only
-//   reports                   reports.view            Admin+ (security figures: Super Admin only)
-//   activity_log              logs.activity          Admin+ (Admins see regular users only)
-//   security_log              logs.security          Super Admin only
-//   user_content              content.view           Admin+ (lower-ranked; the viewing is logged)
-//   delete_content            content.delete         Admin+ (lower-ranked; reason required, owner is told)
-//   list_announcements        announcements.manage   Admin+
-//   save_announcement         announcements.manage   Admin+
-//   delete_announcement       announcements.manage   Admin+
-//   get_settings              settings.global        Super Admin only
-//   save_settings             settings.global        Super Admin only
-// (Full database backup is api/backup.php - a file download, Super Admin only.)
+// admin + super admin tools. everything goes through permissions.php first,
+// and any change to someone else's account gets logged (who, to whom, why).
+// full db backup is its own thing in backup.php
 
 require __DIR__ . '/../includes/auth.php';
 require __DIR__ . '/../includes/settings.php';
@@ -40,7 +17,7 @@ function reply($data, $code = 200)
     exit;
 }
 
-/** Refuse with 403 (and log it) unless $actor may do $action. */
+// 403 + log it if they're not allowed
 function require_permission(array $actor, string $action, ?array $target = null, array $extra = []): void
 {
     $reason = permission_denied($actor, $action, $target, $extra);
@@ -50,7 +27,7 @@ function require_permission(array $actor, string $action, ?array $target = null,
     }
 }
 
-/** Load the account an action is about, or stop with 404. */
+// grab the target account or 404
 function load_target(mysqli $conn, $id): array
 {
     $id = (int) $id;
@@ -66,7 +43,7 @@ function load_target(mysqli $conn, $id): array
     return $row;
 }
 
-/** A reason is required for anything that restricts someone's account. */
+// need a reason for anything that restricts an account
 function required_reason(array $input): string
 {
     $reason = trim((string) ($input['reason'] ?? ''));
@@ -76,7 +53,7 @@ function required_reason(array $input): string
     return mb_substr($reason, 0, 255);
 }
 
-/** Easy-to-read temporary password, e.g. "Hq7k-Mz3p-W9tc" (no 0/O, 1/l/I). */
+// temp password like "Hq7k-Mz3p-W9tc", skips 0/O and 1/l/I so nobody misreads it
 function temporary_password(): string
 {
     $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
@@ -91,7 +68,7 @@ function temporary_password(): string
     return implode('-', $groups);
 }
 
-/** Which actions may $actor take on $row? Sent to the page so it only shows allowed buttons. */
+// which buttons the page should show for this account
 function allowed_actions(array $actor, array $row): array
 {
     $can = [];
@@ -105,7 +82,7 @@ function allowed_actions(array $actor, array $row): array
                 : substr($action, 5);
         }
     }
-    // Status-dependent: only offer what makes sense right now.
+    // depends on their current status
     $status = $row['status'];
     $can = array_values(array_filter($can, function ($a) use ($status) {
         if ($a === 'approve')    return $status === 'pending';
@@ -117,13 +94,13 @@ function allowed_actions(array $actor, array $row): array
     return $can;
 }
 
-/** Explain why there are no actions (e.g. an Admin looking at another Admin). */
+// why there's nothing to do (like an admin looking at another admin)
 function locked_reason(array $actor, array $row): ?string
 {
     return permission_denied($actor, 'user.view', $row);
 }
 
-/** Check an email is valid and not used by another account. */
+// valid email that nobody else is using
 function clean_email(mysqli $conn, $value, int $exceptId = 0): string
 {
     $email = strtolower(trim((string) $value));
@@ -141,7 +118,7 @@ function clean_email(mysqli $conn, $value, int $exceptId = 0): string
 
 const LOG_PAGE_SIZE = 25;
 
-/** "7" -> SQL condition for the last 7 days on $column; anything else -> no limit. */
+// "7" = last 7 days, anything else = all time
 function period_condition(array $input, string $column): string
 {
     $days = (int) ($input['period'] ?? 0);
@@ -150,7 +127,7 @@ function period_condition(array $input, string $column): string
         : '';
 }
 
-/** Run a filtered, paged log query. $base must end in "FROM ... " (joins included). */
+// paged log query. $base has to end with "FROM ... " (joins included)
 function paged_log(mysqli $conn, string $select, string $base, array $where, string $types, array $params, string $order, int $page): array
 {
     $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
@@ -172,7 +149,7 @@ function paged_log(mysqli $conn, string $select, string $base, array $where, str
     return ['rows' => $rows, 'total' => $total, 'page' => $page, 'pages' => $pages];
 }
 
-/** Distinct values of a column, for the "type" filter. */
+// for the type filter dropdown
 function distinct_values(mysqli $conn, string $sql): array
 {
     return array_column(mysqli_fetch_all(mysqli_query($conn, $sql), MYSQLI_NUM), 0);
@@ -192,13 +169,11 @@ function clean_name($value): string
     return $name;
 }
 
-// ---------- Check the request ----------
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(['ok' => false, 'message' => 'Use POST.'], 405);
 }
 
-$user = api_user();   // 401 if signed out, 403 if a password change is required
+$user = api_user();
 
 $input = json_decode(file_get_contents('php://input'), true);
 if (!is_array($input)) {
@@ -209,7 +184,7 @@ $me = $user['id'];
 
 try {
 
-    // ---------- dashboard counts ----------
+    // dashboard counts
     if ($action === 'overview') {
         require_permission($user, 'reports.view');
 
@@ -226,7 +201,7 @@ try {
         reply(['ok' => true, 'total' => $total, 'byRole' => $byRole, 'byStatus' => $byStatus]);
     }
 
-    // ---------- user list (search + filters + paging) ----------
+    // user list
     if ($action === 'list_users') {
         require_permission($user, 'users.list');
 
@@ -264,7 +239,7 @@ try {
         $page  = min($pages, max(1, (int) ($input['page'] ?? 1)));
         $offset = ($page - 1) * PAGE_SIZE;
 
-        // Pending accounts first (they need attention), then newest.
+        // pending first since they need attention, then newest
         $sql = "SELECT u.id, u.username, u.display_name, u.role, u.status, u.status_reason, u.created_at,
                        (SELECT MAX(s.created_at) FROM security_log s
                          WHERE s.target_user_id = u.id AND s.event = 'LOGIN') AS last_login
@@ -302,7 +277,6 @@ try {
             'total' => $total,
             'page'  => $page,
             'pages' => $pages,
-            // What the page may offer globally.
             'viewer' => [
                 'canCreate'       => permission_denied($user, 'users.create') === null,
                 'assignableRoles' => array_map(fn ($r) => ['value' => $r, 'label' => role_label($r)], ASSIGNABLE_ROLES),
@@ -310,12 +284,12 @@ try {
         ]);
     }
 
-    // ---------- site-wide usage report (dashboard) ----------
+    // usage report
     if ($action === 'reports') {
         require_permission($user, 'reports.view');
         $one = fn (string $sql) => (int) mysqli_fetch_row(mysqli_query($conn, $sql))[0];
 
-        // Sign-ins per day for the last 14 days (today included), zero-filled.
+        // sign-ins per day for the last 14 days incl. today, empty days = 0
         $days = [];
         for ($i = 13; $i >= 0; $i--) {
             $days[date('Y-m-d', strtotime("-$i day"))] = 0;
@@ -349,7 +323,7 @@ try {
             ],
         ];
 
-        // Security figures are Super Admin only.
+        // super admin only
         if (permission_denied($user, 'logs.security') === null) {
             $report['security'] = [
                 'failed7'  => $one("SELECT COUNT(*) FROM security_log WHERE event = 'LOGIN_FAILED' AND created_at >= NOW() - INTERVAL 7 DAY"),
@@ -360,7 +334,7 @@ try {
         reply($report);
     }
 
-    // ---------- activity log: what users did (tasks, classes, notes, imports) ----------
+    // activity log
     if ($action === 'activity_log') {
         require_permission($user, 'logs.activity');
         $isSuper = permission_denied($user, 'logs.security') === null;
@@ -368,7 +342,7 @@ try {
         $where = [];
         $types = '';
         $params = [];
-        // Admins see regular users' activity only (the matrix); Super Admins see everyone's.
+        // admins only get regular users, super admins get everyone
         if (!$isSuper) {
             $where[] = "u.role IN ('student','teacher')";
         }
@@ -411,7 +385,7 @@ try {
         reply(['ok' => true] + $log);
     }
 
-    // ---------- security log: logins, failures, account changes (Super Admin) ----------
+    // security log (super admin only)
     if ($action === 'security_log') {
         require_permission($user, 'logs.security');
 
@@ -448,7 +422,7 @@ try {
             $where, $types, $params, 's.created_at DESC, s.id DESC', (int) ($input['page'] ?? 1));
 
         $person = function ($id, $name, $email) {
-            if ($id === null) return null;   // e.g. a failed login from someone not signed in
+            if ($id === null) return null;   // failed login, no user
             return $email !== null
                 ? ['id' => (int) $id, 'name' => $name, 'email' => $email]
                 : ['id' => (int) $id, 'name' => 'Deleted account', 'email' => ''];
@@ -466,7 +440,7 @@ try {
         reply(['ok' => true] + $log);
     }
 
-    // ---------- announcements ----------
+    // announcements
     if ($action === 'list_announcements') {
         require_permission($user, 'announcements.manage');
         $rows = mysqli_fetch_all(mysqli_query($conn,
@@ -500,7 +474,7 @@ try {
         $audience   = in_array($input['audience'] ?? '', ['all', 'student', 'teacher'], true) ? $input['audience'] : 'all';
         $importance = ($input['importance'] ?? '') === 'important' ? 'important' : 'info';
 
-        // "2026-12-01T08:00" from <input type="datetime-local">, or empty.
+        // from datetime-local, like "2026-12-01T08:00" (or empty)
         $when = function ($value, $field) {
             $value = trim((string) $value);
             if ($value === '') return null;
@@ -552,7 +526,7 @@ try {
         reply(['ok' => true, 'message' => 'Announcement removed.']);
     }
 
-    // ---------- global settings (Super Admin) ----------
+    // global settings
     if ($action === 'get_settings') {
         require_permission($user, 'settings.global');
         $s = get_settings($conn);
@@ -586,13 +560,13 @@ try {
         reply(['ok' => true, 'message' => $changes ? 'Settings saved.' : 'Nothing changed.']);
     }
 
-    // Everything below acts on one account.
+    // everything below is about one account
     if (in_array($action, ['approve', 'set_status', 'reset_password', 'edit_user', 'change_role', 'delete_user',
                            'user_content', 'delete_content'], true)) {
         $target = load_target($conn, $input['id'] ?? 0);
     }
 
-    // ---------- moderation: see one user's tasks, classes and notes ----------
+    // moderation - view someone's stuff
     if ($action === 'user_content') {
         require_permission($user, 'content.view', $target);
 
@@ -623,7 +597,7 @@ try {
             'remark' => $r['remark'] ?? '', 'createdAt' => $r['created_at'],
         ], $fetch('SELECT id, title, body, remark, created_at FROM notes WHERE user_id = ? ORDER BY created_at DESC, id DESC'));
 
-        // Looking at someone's private study material is itself recorded.
+        // viewing someone's private stuff gets logged too
         log_security_event('CONTENT_VIEWED', $me, $target['id'],
             sprintf('Viewed %d task(s), %d class(es), %d note(s)', count($tasks), count($classes), count($notes)));
 
@@ -631,7 +605,7 @@ try {
                'tasks' => $tasks, 'classes' => $classes, 'notes' => $notes]);
     }
 
-    // ---------- moderation: remove one item (reason required; the owner is told) ----------
+    // moderation - delete an item (needs a reason, owner gets told)
     if ($action === 'delete_content') {
         require_permission($user, 'content.delete', $target);
 
@@ -647,7 +621,7 @@ try {
         $reason = required_reason($input);
         $itemId = (int) ($input['itemId'] ?? 0);
 
-        // The item must belong to THIS user (never trust the id alone).
+        // make sure it actually belongs to this user, don't just trust the id
         $stmt = mysqli_prepare($conn, "SELECT {$type['title']} AS title FROM {$type['table']} WHERE id = ? AND user_id = ?");
         mysqli_stmt_bind_param($stmt, 'ii', $itemId, $target['id']);
         mysqli_stmt_execute($stmt);
@@ -659,9 +633,9 @@ try {
         mysqli_begin_transaction($conn);
         $stmt = mysqli_prepare($conn, "DELETE FROM {$type['table']} WHERE id = ? AND user_id = ?");
         mysqli_stmt_bind_param($stmt, 'ii', $itemId, $target['id']);
-        mysqli_stmt_execute($stmt);   // task_history rows follow their task (ON DELETE CASCADE)
+        mysqli_stmt_execute($stmt);   // history goes with it (cascade)
 
-        // Tell the owner: this shows up in THEIR audit trail (Settings).
+        // shows up in the owner's audit trail so they know
         $entityId = "{$type['prefix']}-$itemId";
         $ownerNote = "Removed by an administrator: \"{$item['title']}\" (reason: $reason)";
         $stmt = mysqli_prepare($conn,
@@ -670,7 +644,7 @@ try {
         mysqli_stmt_bind_param($stmt, 'issss', $target['id'], $auditAction, $type['label'], $entityId, $ownerNote);
         mysqli_stmt_execute($stmt);
 
-        // And record which admin did it.
+        // and log which admin did it
         log_security_event('CONTENT_DELETED', $me, $target['id'],
             "Removed {$type['label']} $entityId \"{$item['title']}\" (reason: $reason)");
         mysqli_commit($conn);
@@ -679,7 +653,7 @@ try {
             . "{$target['display_name']} will see a note in their audit trail."]);
     }
 
-    // ---------- approve a pending account ----------
+    // approve pending account
     if ($action === 'approve') {
         require_permission($user, 'user.approve', $target);
         if ($target['status'] !== 'pending') {
@@ -692,7 +666,7 @@ try {
         reply(['ok' => true, 'message' => "{$target['display_name']} can now sign in."]);
     }
 
-    // ---------- suspend / ban / reactivate ----------
+    // suspend / ban / reactivate
     if ($action === 'set_status') {
         $map = ['suspended' => 'user.suspend', 'banned' => 'user.ban', 'active' => 'user.reactivate'];
         $newStatus = (string) ($input['status'] ?? '');
@@ -723,7 +697,7 @@ try {
             . ($newStatus !== 'active' ? ' They are signed out immediately.' : '')]);
     }
 
-    // ---------- reset password (temporary password, must change at next login) ----------
+    // reset password (temp one, they change it on next login)
     if ($action === 'reset_password') {
         require_permission($user, 'user.reset_password', $target);
         $reason = required_reason($input);
@@ -735,7 +709,7 @@ try {
         mysqli_stmt_bind_param($stmt, 'si', $hash, $target['id']);
         mysqli_stmt_execute($stmt);
 
-        // Never log the password itself.
+        // don't log the actual password obv
         log_security_event('PASSWORD_RESET', $me, $target['id'], "Temporary password issued (reason: $reason)");
         reply([
             'ok'                => true,
@@ -745,7 +719,7 @@ try {
         ]);
     }
 
-    // ---------- edit name / email ----------
+    // edit name/email
     if ($action === 'edit_user') {
         require_permission($user, 'user.edit', $target);
         $name  = clean_name($input['name'] ?? '');
@@ -764,7 +738,7 @@ try {
         reply(['ok' => true, 'message' => $changes ? 'Details saved.' : 'Nothing changed.']);
     }
 
-    // ---------- change role (Super Admin) ----------
+    // change role
     if ($action === 'change_role') {
         $newRole = (string) ($input['role'] ?? '');
         require_permission($user, 'user.change_role', $target, ['new_role' => $newRole]);
@@ -782,7 +756,7 @@ try {
         reply(['ok' => true, 'message' => "{$target['display_name']} is now " . role_label($newRole) . '.']);
     }
 
-    // ---------- create an account (Super Admin) ----------
+    // create account
     if ($action === 'create_user') {
         require_permission($user, 'users.create');
         $name  = clean_name($input['name'] ?? '');
@@ -810,20 +784,20 @@ try {
         ]);
     }
 
-    // ---------- delete an account (Super Admin) ----------
+    // delete account
     if ($action === 'delete_user') {
         require_permission($user, 'user.delete', $target);
         if ($guard = last_super_admin_guard($conn, $target, null, null, true)) {
             reply(['ok' => false, 'message' => $guard], 409);
         }
-        // Typing the email confirms the right account is being deleted.
+        // they have to type the email so nobody nukes the wrong account
         if (strtolower(trim((string) ($input['confirmEmail'] ?? ''))) !== $target['username']) {
             reply(['ok' => false, 'message' => "Type the account's email exactly to confirm.", 'field' => 'confirmEmail'], 422);
         }
         $reason = required_reason($input);
 
-        // Their own data goes with the account (task_history follows tasks via CASCADE).
-        // Audit and security logs are kept: they are the record of what happened.
+        // their data goes too (history cascades with tasks)
+        // audit + security logs stay, that's the record of what happened
         mysqli_begin_transaction($conn);
         foreach (['tasks', 'schedules', 'notes', 'user_preferences', 'user_pomodoro_preferences'] as $table) {
             $stmt = mysqli_prepare($conn, "DELETE FROM $table WHERE user_id = ?");
@@ -844,7 +818,7 @@ try {
 
 } catch (mysqli_sql_exception $e) {
     try {
-        mysqli_rollback($conn);   // undo a half-finished delete (harmless otherwise)
+        mysqli_rollback($conn);   // undo if it died halfway
     } catch (Throwable $ignored) {
     }
     if ($e->getCode() === 1062) {

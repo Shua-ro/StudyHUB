@@ -1,11 +1,8 @@
 <?php
-// Functions that read notes from the database.
-// Only this file knows the names of the note columns.
 
 require_once __DIR__ . '/db.php';
 
-// Get all notes of one user.
-// Each note is returned in the same shape that app.js uses.
+// all notes for a user, shaped like app.js expects
 function get_notes_for_user($conn, $userId)
 {
     $sql = 'SELECT id, title, body, remark, created_at
