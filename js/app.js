@@ -724,7 +724,7 @@ if (
     key: "dueDate",
     direction: "asc",
   };
-  state.pageSize = window.STUDYHUB_PREFERENCES.pageSize ?? 10;
+  state.pageSize = window.STUDYHUB_PREFERENCES.pageSize ?? 5;
 }
 
 function normalize(value) {

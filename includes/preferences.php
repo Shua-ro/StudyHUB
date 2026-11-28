@@ -36,7 +36,7 @@ function get_preferences_for_user($conn, $userId)
         'theme'   => 'system',
         'filters' => ['status' => 'ALL', 'priority' => 'ALL'],
         'sort'    => ['key' => 'dueDate', 'direction' => 'asc'],
-        'pageSize' => 10,
+        'pageSize' => 5,
     ];
 }
 

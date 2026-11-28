@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   filter_priority ENUM('ALL','High','Medium','Low') NOT NULL DEFAULT 'ALL',
   sort_key        ENUM('title','subject','dueDate','createdAt','priority','status') NOT NULL DEFAULT 'dueDate',
   sort_direction  ENUM('asc','desc') NOT NULL DEFAULT 'asc',
-  page_size       ENUM('5','10','15') NOT NULL DEFAULT '10',
+  page_size       ENUM('5','10','15') NOT NULL DEFAULT '5',
   updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id)
 ) ENGINE=InnoDB;

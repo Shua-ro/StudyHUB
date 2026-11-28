@@ -39,7 +39,7 @@ try {
         $filterPriority  = in_array($prefs['filters']['priority'] ?? '', ['ALL','High','Medium','Low'], true) ? $prefs['filters']['priority'] : 'ALL';
         $sortKey         = in_array($prefs['sort']['key'] ?? '', ['title','subject','dueDate','createdAt','priority','status'], true) ? $prefs['sort']['key'] : 'dueDate';
         $sortDirection   = in_array($prefs['sort']['direction'] ?? '', ['asc','desc'], true) ? $prefs['sort']['direction'] : 'asc';
-        $pageSize        = in_array($prefs['pageSize'] ?? '', ['5','10','15'], true) ? (int) $prefs['pageSize'] : 10;
+        $pageSize        = in_array($prefs['pageSize'] ?? '', ['5','10','15'], true) ? (int) $prefs['pageSize'] : 5;
 
         $sql = 'INSERT INTO user_preferences
                   (user_id, theme, filter_status, filter_priority, sort_key, sort_direction, page_size)

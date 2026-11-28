@@ -178,14 +178,14 @@ function clean_backup($data)
     }
 
     $p = is_array($data['preferences'] ?? null) ? $data['preferences'] : [];
-    $pageSize = (int) ($p['pageSize'] ?? 10);
+    $pageSize = (int) ($p['pageSize'] ?? 5);
     $preferences = [
         'theme'     => pick($p['theme'] ?? null, ['dark', 'light', 'system'], 'system'),
         'status'    => pick($p['filters']['status'] ?? null, array_merge(['ALL'], STATUSES), 'ALL'),
         'priority'  => pick($p['filters']['priority'] ?? null, ['ALL', 'High', 'Medium', 'Low'], 'ALL'),
         'sortKey'   => pick($p['sort']['key'] ?? null, ['title', 'subject', 'dueDate', 'createdAt', 'priority', 'status'], 'dueDate'),
         'sortDir'   => pick($p['sort']['direction'] ?? null, ['asc', 'desc'], 'asc'),
-        'pageSize'  => in_array($pageSize, [5, 10, 15], true) ? $pageSize : 10,
+        'pageSize'  => in_array($pageSize, [5, 10, 15], true) ? $pageSize : 5,
     ];
 
     return compact('tasks', 'schedules', 'notes', 'preferences');
